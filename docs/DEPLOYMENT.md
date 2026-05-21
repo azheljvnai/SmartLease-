@@ -16,6 +16,10 @@ Output is in `dist/`.
 
 The repo includes `netlify.toml` (build → `dist/`, SPA fallback). In the Netlify UI, set **Environment variables** for every `VITE_*` value from `.env.example`, then trigger a new deploy so Vite inlines them at build time.
 
+**Do not** add server-only variables to Netlify (`GOOGLE_APPLICATION_CREDENTIALS`, `FIREBASE_PROJECT_ID`) — they are for local `npm run seed` only. If secrets scanning fails on benign matches, `netlify.toml` already sets `SECRETS_SCAN_OMIT_KEYS` / `SECRETS_SCAN_OMIT_PATHS`; remove duplicate secret env vars from the Netlify UI when possible.
+
+`VITE_*` values are public in the built JS bundle. Do not mark them as “secret” in Netlify unless you also omit them from scanning.
+
 Add your Netlify site URL under Firebase Console → Authentication → **Authorized domains** if sign-in fails in production.
 
 ## Firebase Hosting

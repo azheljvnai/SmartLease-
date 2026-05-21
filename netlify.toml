@@ -2,6 +2,12 @@
   command = "npm run build"
   publish = "dist"
 
+[build.environment]
+  # VITE_* values are embedded in the client bundle; repo/docs also use placeholders
+  # like "demo" and .firebaserc holds the Firebase project id — not leaked server secrets.
+  SECRETS_SCAN_OMIT_KEYS = "VITE_PAYMENT_GATEWAY,GOOGLE_APPLICATION_CREDENTIALS,VITE_FIREBASE_PROJECT_ID,FIREBASE_PROJECT_ID"
+  SECRETS_SCAN_OMIT_PATHS = ".env.example,.firebaserc,README.md,docs/**,scripts/**"
+
 [[redirects]]
   from = "/*"
   to = "/index.html"
