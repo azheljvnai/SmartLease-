@@ -1,5 +1,5 @@
 import { Skeleton } from "../ui/skeleton";
-import { Card } from "../ui/Card";
+import { Card } from "../ui/card";
 
 export function TableSkeleton({ rows = 5 }: { rows?: number }) {
   return (

@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Card } from '../ui/Card';
+import { Card } from '../ui/card';
 import {
   Building2,
   Users,

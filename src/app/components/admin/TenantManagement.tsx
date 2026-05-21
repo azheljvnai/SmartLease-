@@ -1,9 +1,9 @@
 import { useEffect, useState } from 'react';
 import { toast } from 'sonner';
-import { Card } from '../ui/Card';
-import { Button } from '../ui/Button';
-import { Input } from '../ui/Input';
-import { Badge } from '../ui/Badge';
+import { Card } from '../ui/card';
+import { Button } from '../ui/button';
+import { Input } from '../ui/input';
+import { Badge } from '../ui/badge';
 import { User, Plus, Search, Mail, Phone, Home } from 'lucide-react';
 import { PageLoader } from '../common/LoadingSpinner';
 import { EmptyState } from '../common/EmptyState';

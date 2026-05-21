@@ -1,9 +1,9 @@
 import { useState } from 'react';
 import { toast } from 'sonner';
 import { useNavigate } from 'react-router';
-import { Card } from '../ui/Card';
-import { Button } from '../ui/Button';
-import { Input } from '../ui/Input';
+import { Card } from '../ui/card';
+import { Button } from '../ui/button';
+import { Input } from '../ui/input';
 import { User, Bell, Lock, Shield } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import { updateUserProfile, changePassword } from '../../../services/auth.service';

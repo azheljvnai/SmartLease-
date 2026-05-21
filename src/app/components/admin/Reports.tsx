@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
-import { Card } from '../ui/Card';
-import { Button } from '../ui/Button';
+import { Card } from '../ui/card';
+import { Button } from '../ui/button';
 import { Download } from 'lucide-react';
 import { LineChart, Line, BarChart, Bar, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import { PageLoader } from '../common/LoadingSpinner';

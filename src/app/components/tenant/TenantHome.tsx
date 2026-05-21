@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
-import { Card } from '../ui/Card';
-import { Button } from '../ui/Button';
-import { Badge } from '../ui/Badge';
+import { Card } from '../ui/card';
+import { Button } from '../ui/button';
+import { Badge } from '../ui/badge';
 import { Link, useNavigate } from 'react-router';
 import { DollarSign, FileText, Wrench, Calendar, Home, CreditCard, AlertCircle, ArrowRight } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';

@@ -2,9 +2,9 @@ import { useState } from 'react';
 import { Link } from 'react-router';
 import { Building2, Mail } from 'lucide-react';
 import { toast } from 'sonner';
-import { Button } from '../ui/Button';
-import { Input } from '../ui/Input';
-import { Card } from '../ui/Card';
+import { Button } from '../ui/button';
+import { Input } from '../ui/input';
+import { Card } from '../ui/card';
 import { resetPassword } from '../../../services/auth.service';
 import { getFirebaseErrorMessage } from '../../../lib/firebase-errors';
 

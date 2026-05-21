@@ -1,8 +1,8 @@
 import { useEffect, useState } from 'react';
 import { toast } from 'sonner';
-import { Card } from '../ui/Card';
-import { Button } from '../ui/Button';
-import { Input } from '../ui/Input';
+import { Card } from '../ui/card';
+import { Button } from '../ui/button';
+import { Input } from '../ui/input';
 import { Check, User, Home, FileText, PenTool, CheckCircle2 } from 'lucide-react';
 import { listProperties } from '../../../services/properties.service';
 import { listAllUnits } from '../../../services/units.service';
