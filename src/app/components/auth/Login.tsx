@@ -1,28 +1,37 @@
 import { useState } from 'react';
 import { Link, useNavigate } from 'react-router';
 import { Building2, Mail, Lock, Eye, EyeOff } from 'lucide-react';
+import { toast } from 'sonner';
 import { Button } from '../ui/Button';
 import { Input } from '../ui/Input';
 import { Card } from '../ui/Card';
+import { signIn } from '../../../services/auth.service';
+import { getFirebaseErrorMessage } from '../../../lib/firebase-errors';
 
 export const Login = () => {
   const navigate = useNavigate();
   const [showPassword, setShowPassword] = useState(false);
-  const [userType, setUserType] = useState<'admin' | 'tenant'>('admin');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [loading, setLoading] = useState(false);
 
-  const handleLogin = (e: React.FormEvent) => {
+  const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (userType === 'admin') {
-      navigate('/admin');
-    } else {
-      navigate('/tenant');
+    setLoading(true);
+    try {
+      const profile = await signIn(email, password);
+      toast.success('Welcome back!');
+      navigate(profile.role === 'admin' ? '/admin' : '/tenant');
+    } catch (err) {
+      toast.error(getFirebaseErrorMessage(err));
+    } finally {
+      setLoading(false);
     }
   };
 
   return (
     <div className="min-h-screen flex items-center justify-center p-4 bg-gradient-to-br from-primary/5 via-background to-secondary/20">
       <div className="w-full max-w-6xl grid lg:grid-cols-2 gap-8 items-center">
-        {/* Left side - Branding (hidden on mobile) */}
         <div className="hidden lg:block">
           <div className="space-y-6">
             <div className="flex items-center gap-4">
@@ -72,7 +81,6 @@ export const Login = () => {
           </div>
         </div>
 
-        {/* Right side - Login form */}
         <Card className="w-full max-w-md mx-auto">
           <div className="text-center mb-8">
             <div className="lg:hidden flex justify-center mb-4">
@@ -84,44 +92,14 @@ export const Login = () => {
             <p className="text-muted-foreground">Sign in to your account to continue</p>
           </div>
 
-          {/* User type selector */}
-          <div className="flex gap-2 mb-6">
-            <button
-              type="button"
-              onClick={() => setUserType('admin')}
-              className={`
-                flex-1 py-2.5 rounded-lg text-sm font-medium transition-all
-                ${
-                  userType === 'admin'
-                    ? 'bg-primary text-primary-foreground shadow-sm'
-                    : 'bg-muted text-muted-foreground hover:bg-muted/80'
-                }
-              `}
-            >
-              Admin
-            </button>
-            <button
-              type="button"
-              onClick={() => setUserType('tenant')}
-              className={`
-                flex-1 py-2.5 rounded-lg text-sm font-medium transition-all
-                ${
-                  userType === 'tenant'
-                    ? 'bg-primary text-primary-foreground shadow-sm'
-                    : 'bg-muted text-muted-foreground hover:bg-muted/80'
-                }
-              `}
-            >
-              Tenant
-            </button>
-          </div>
-
           <form onSubmit={handleLogin} className="space-y-4">
             <Input
               type="email"
               label="Email Address"
-              placeholder="you@example.com"
+              placeholder="admin@smartlease.demo"
               required
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
             />
 
             <div className="relative">
@@ -130,6 +108,8 @@ export const Login = () => {
                 label="Password"
                 placeholder="Enter your password"
                 required
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
               />
               <button
                 type="button"
@@ -145,18 +125,22 @@ export const Login = () => {
                 <input type="checkbox" className="w-4 h-4 rounded border-input accent-primary" />
                 <span className="text-muted-foreground">Remember me</span>
               </label>
-              <a href="#" className="text-primary hover:underline">
+              <Link to="/forgot-password" className="text-primary hover:underline">
                 Forgot password?
-              </a>
+              </Link>
             </div>
 
-            <Button type="submit" variant="primary" size="lg" className="w-full">
+            <Button type="submit" variant="primary" size="lg" className="w-full" loading={loading}>
               Sign In
             </Button>
           </form>
 
+          <p className="text-xs text-muted-foreground text-center mt-4">
+            Demo: admin@smartlease.demo / Admin123! or john.smith@demo.com / Tenant123!
+          </p>
+
           <div className="mt-6 text-center text-sm">
-            <span className="text-muted-foreground">Don't have an account? </span>
+            <span className="text-muted-foreground">Don&apos;t have an account? </span>
             <Link to="/register" className="text-primary hover:underline font-medium">
               Sign up
             </Link>

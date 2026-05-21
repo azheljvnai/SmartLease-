@@ -2,12 +2,19 @@ import * as React from "react";
 
 import { cn } from "./utils";
 
-function Card({ className, ...props }: React.ComponentProps<"div">) {
+type CardProps = React.ComponentProps<"div"> & {
+  padding?: boolean;
+  hover?: boolean;
+};
+
+function Card({ className, padding = true, hover = false, ...props }: CardProps) {
   return (
     <div
       data-slot="card"
       className={cn(
         "bg-card text-card-foreground flex flex-col gap-6 rounded-xl border",
+        padding && "p-6",
+        hover && "transition-shadow hover:shadow-lg",
         className,
       )}
       {...props}

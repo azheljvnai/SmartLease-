@@ -1,9 +1,11 @@
-import { createBrowserRouter } from "react-router";
+import { createBrowserRouter, Navigate } from "react-router";
 import { RootLayout } from "./components/layouts/RootLayout";
 import { AdminLayout } from "./components/layouts/AdminLayout";
 import { TenantLayout } from "./components/layouts/TenantLayout";
 import { Login } from "./components/auth/Login";
 import { Register } from "./components/auth/Register";
+import { ForgotPassword } from "./components/auth/ForgotPassword";
+import { ProtectedRoute } from "./components/auth/ProtectedRoute";
 import { AdminDashboard } from "./components/admin/AdminDashboard";
 import { PropertyManagement } from "./components/admin/PropertyManagement";
 import { TenantManagement } from "./components/admin/TenantManagement";
@@ -24,29 +26,41 @@ export const router = createBrowserRouter([
       { index: true, Component: Login },
       { path: "login", Component: Login },
       { path: "register", Component: Register },
+      { path: "forgot-password", Component: ForgotPassword },
     ],
   },
   {
     path: "/admin",
-    Component: AdminLayout,
+    element: <ProtectedRoute allowedRole="admin" />,
     children: [
-      { index: true, Component: AdminDashboard },
-      { path: "properties", Component: PropertyManagement },
-      { path: "tenants", Component: TenantManagement },
-      { path: "leases", Component: LeaseManagement },
-      { path: "billing", Component: BillingPayments },
-      { path: "maintenance", Component: Maintenance },
-      { path: "reports", Component: Reports },
+      {
+        Component: AdminLayout,
+        children: [
+          { index: true, Component: AdminDashboard },
+          { path: "properties", Component: PropertyManagement },
+          { path: "tenants", Component: TenantManagement },
+          { path: "leases", Component: LeaseManagement },
+          { path: "billing", Component: BillingPayments },
+          { path: "maintenance", Component: Maintenance },
+          { path: "reports", Component: Reports },
+        ],
+      },
     ],
   },
   {
     path: "/tenant",
-    Component: TenantLayout,
+    element: <ProtectedRoute allowedRole="tenant" />,
     children: [
-      { index: true, Component: TenantHome },
-      { path: "payments", Component: TenantPayments },
-      { path: "maintenance", Component: TenantMaintenance },
-      { path: "profile", Component: TenantProfile },
+      {
+        Component: TenantLayout,
+        children: [
+          { index: true, Component: TenantHome },
+          { path: "payments", Component: TenantPayments },
+          { path: "maintenance", Component: TenantMaintenance },
+          { path: "profile", Component: TenantProfile },
+        ],
+      },
     ],
   },
+  { path: "*", element: <Navigate to="/login" replace /> },
 ]);

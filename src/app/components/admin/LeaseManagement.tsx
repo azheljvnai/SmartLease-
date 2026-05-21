@@ -1,8 +1,16 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
+import { toast } from 'sonner';
 import { Card } from '../ui/Card';
 import { Button } from '../ui/Button';
 import { Input } from '../ui/Input';
 import { Check, User, Home, FileText, PenTool, CheckCircle2 } from 'lucide-react';
+import { listProperties } from '../../../services/properties.service';
+import { listAllUnits } from '../../../services/units.service';
+import { createTenant } from '../../../services/tenants.service';
+import { createLease } from '../../../services/leases.service';
+import type { Property, Unit } from '../../../types';
+import { getFirebaseErrorMessage } from '../../../lib/firebase-errors';
+import { formatCurrency } from '../../../lib/format';
 
 const steps = [
   { id: 1, name: 'Tenant Info', icon: User },
@@ -14,6 +22,9 @@ const steps = [
 
 export const LeaseManagement = () => {
   const [currentStep, setCurrentStep] = useState(1);
+  const [properties, setProperties] = useState<Property[]>([]);
+  const [units, setUnits] = useState<Unit[]>([]);
+  const [submitting, setSubmitting] = useState(false);
   const [formData, setFormData] = useState({
     tenantName: '',
     tenantEmail: '',
@@ -26,7 +37,60 @@ export const LeaseManagement = () => {
     deposit: '',
   });
 
+  useEffect(() => {
+    Promise.all([listProperties(), listAllUnits()]).then(([p, u]) => {
+      setProperties(p);
+      setUnits(u);
+    });
+  }, []);
+
+  const propertyUnits = units.filter((u) => u.propertyId === formData.property);
+
+  const handleComplete = async () => {
+    const property = properties.find((p) => p.id === formData.property);
+    const unit = units.find((u) => u.id === formData.unit);
+    if (!property || !unit || !formData.tenantName || !formData.startDate) {
+      toast.error('Please complete all required fields');
+      return;
+    }
+    setSubmitting(true);
+    try {
+      const tenantId = await createTenant({
+        name: formData.tenantName,
+        email: formData.tenantEmail,
+        phone: formData.tenantPhone,
+        propertyId: property.id,
+        unitId: unit.id,
+        propertyName: property.name,
+        unitLabel: `${property.name} - Unit ${unit.unitNumber}`,
+        rent: parseFloat(formData.rent) || 0,
+      });
+      await createLease({
+        tenantId,
+        propertyId: property.id,
+        unitId: unit.id,
+        tenantName: formData.tenantName,
+        propertyName: property.name,
+        unitLabel: `Unit ${unit.unitNumber}`,
+        startDate: formData.startDate,
+        endDate: formData.endDate,
+        rent: parseFloat(formData.rent) || 0,
+        deposit: parseFloat(formData.deposit) || 0,
+      });
+      setCurrentStep(5);
+      toast.success('Lease created successfully');
+    } catch (err) {
+      toast.error(getFirebaseErrorMessage(err));
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
   const handleNext = () => {
+    if (currentStep === 4) {
+      handleComplete();
+      return;
+    }
     if (currentStep < steps.length) {
       setCurrentStep(currentStep + 1);
     }
@@ -185,10 +249,9 @@ export const LeaseManagement = () => {
                   className="w-full px-4 py-2.5 bg-input-background border border-input rounded-lg focus:outline-none focus:ring-2 focus:ring-primary"
                 >
                   <option value="">Choose a property</option>
-                  <option value="sunset">Sunset Apartments</option>
-                  <option value="downtown">Downtown Plaza</option>
-                  <option value="riverside">Riverside Condos</option>
-                  <option value="garden">Garden Heights</option>
+                  {properties.map((p) => (
+                    <option key={p.id} value={p.id}>{p.name}</option>
+                  ))}
                 </select>
               </div>
               <div>
@@ -199,9 +262,9 @@ export const LeaseManagement = () => {
                   className="w-full px-4 py-2.5 bg-input-background border border-input rounded-lg focus:outline-none focus:ring-2 focus:ring-primary"
                 >
                   <option value="">Choose a unit</option>
-                  <option value="101">Unit 101 - Available</option>
-                  <option value="102">Unit 102 - Available</option>
-                  <option value="201">Unit 201 - Available</option>
+                  {propertyUnits.map((u) => (
+                    <option key={u.id} value={u.id}>Unit {u.unitNumber} - {u.status}</option>
+                  ))}
                 </select>
               </div>
             </div>
@@ -281,11 +344,15 @@ export const LeaseManagement = () => {
                   </div>
                   <div className="flex justify-between">
                     <span className="text-muted-foreground">Monthly Rent:</span>
-                    <span className="font-medium text-foreground">${formData.rent || '0'}</span>
+                    <span className="font-medium text-foreground">
+                      {formData.rent ? formatCurrency(Number(formData.rent)) : formatCurrency(0)}
+                    </span>
                   </div>
                   <div className="flex justify-between">
                     <span className="text-muted-foreground">Security Deposit:</span>
-                    <span className="font-medium text-foreground">${formData.deposit || '0'}</span>
+                    <span className="font-medium text-foreground">
+                      {formData.deposit ? formatCurrency(Number(formData.deposit)) : formatCurrency(0)}
+                    </span>
                   </div>
                 </div>
               </Card>
@@ -331,6 +398,7 @@ export const LeaseManagement = () => {
           <Button
             variant="primary"
             onClick={handleNext}
+            loading={submitting}
             className="w-full sm:w-auto"
           >
             {currentStep === 4 ? 'Complete Lease' : 'Next Step'}

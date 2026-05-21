@@ -1,0 +1,120 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function userDoc() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid));
+    }
+
+    function getUserRole() {
+      return request.auth.token.role != null
+        ? request.auth.token.role
+        : userDoc().data.role;
+    }
+
+    function isAdmin() {
+      return isSignedIn() && getUserRole() == 'admin';
+    }
+
+    function isTenant() {
+      return isSignedIn() && getUserRole() == 'tenant';
+    }
+
+    function userTenantId() {
+      return userDoc().data.tenantId;
+    }
+
+    function ownsTenant(tenantId) {
+      return isTenant() && userTenantId() == tenantId;
+    }
+
+    match /users/{userId} {
+      allow read: if isSignedIn() && (request.auth.uid == userId || isAdmin());
+      allow create: if isSignedIn() && request.auth.uid == userId
+        && request.resource.data.role in ['admin', 'tenant'];
+      allow update: if isSignedIn() && (request.auth.uid == userId || isAdmin())
+        && !request.resource.data.diff(resource.data).affectedKeys().hasAny(['role', 'tenantId'])
+        || isAdmin();
+      allow delete: if isAdmin();
+    }
+
+    match /properties/{id} {
+      allow read: if isSignedIn();
+      allow write: if isAdmin();
+    }
+
+    match /units/{id} {
+      allow read: if isSignedIn();
+      allow write: if isAdmin();
+    }
+
+    match /tenants/{tenantId} {
+      allow read: if isAdmin() || ownsTenant(tenantId);
+      allow write: if isAdmin();
+    }
+
+    match /leases/{id} {
+      allow read: if isAdmin() || (isTenant() && resource.data.tenantId == userTenantId());
+      allow write: if isAdmin();
+    }
+
+    match /invoices/{id} {
+      allow read: if isAdmin() || (isTenant() && resource.data.tenantId == userTenantId());
+      allow create, delete: if isAdmin();
+      allow update: if isAdmin()
+        || (isTenant() && resource.data.tenantId == userTenantId()
+          && request.resource.data.tenantId == userTenantId()
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'paidDate', 'method', 'updatedAt']));
+    }
+
+    match /payments/{id} {
+      allow read: if isAdmin() || (isTenant() && resource.data.tenantId == userTenantId());
+      allow create: if isSignedIn()
+        && (isAdmin() || request.resource.data.tenantId == userTenantId());
+      allow update, delete: if isAdmin();
+    }
+
+    match /maintenanceRequests/{requestId} {
+      allow read: if isAdmin() || (isTenant() && resource.data.tenantId == userTenantId());
+      allow create: if isSignedIn()
+        && (isAdmin() || request.resource.data.tenantId == userTenantId());
+      allow update: if isAdmin()
+        || (isTenant() && resource.data.tenantId == userTenantId()
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['photoUrls', 'updatedAt']));
+      allow delete: if isAdmin();
+
+      match /updates/{updateId} {
+        allow read: if isAdmin() || ownsTenant(
+          get(/databases/$(database)/documents/maintenanceRequests/$(requestId)).data.tenantId
+        );
+        allow create: if isSignedIn();
+        allow update, delete: if isAdmin();
+      }
+    }
+
+    match /activities/{id} {
+      allow read: if isAdmin();
+      allow create: if isSignedIn();
+      allow update, delete: if isAdmin();
+    }
+
+    match /notices/{id} {
+      allow read: if isSignedIn();
+      allow write: if isAdmin();
+    }
+
+    match /technicians/{id} {
+      allow read: if isSignedIn();
+      allow write: if isAdmin();
+    }
+
+    match /paymentMethods/{id} {
+      allow read: if isAdmin() || (isTenant() && resource.data.tenantId == userTenantId());
+      allow write: if isAdmin() || (isTenant() && request.resource.data.tenantId == userTenantId());
+    }
+  }
+}

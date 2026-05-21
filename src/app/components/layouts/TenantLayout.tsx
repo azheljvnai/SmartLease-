@@ -1,8 +1,16 @@
-import { Outlet, Link, useLocation } from 'react-router';
+import { Outlet, Link, useLocation, useNavigate } from 'react-router';
 import { Home, CreditCard, Wrench, User, Bell, LogOut } from 'lucide-react';
+import { useAuth } from '../../contexts/AuthContext';
 
 export const TenantLayout = () => {
   const location = useLocation();
+  const navigate = useNavigate();
+  const { profile, tenant, signOut } = useAuth();
+
+  const handleLogout = async () => {
+    await signOut();
+    navigate('/login');
+  };
 
   const navigation = [
     { name: 'Home', href: '/tenant', icon: Home },
@@ -63,20 +71,23 @@ export const TenantLayout = () => {
           <div className="p-4 border-t border-border">
             <div className="flex items-center gap-3 mb-3">
               <div className="w-10 h-10 bg-primary/10 rounded-full flex items-center justify-center">
-                <span className="text-sm font-medium text-primary">JS</span>
+                <span className="text-sm font-medium text-primary">
+                  {tenant?.name?.split(' ').map((n) => n[0]).join('') ?? 'TN'}
+                </span>
               </div>
               <div className="flex-1 min-w-0">
-                <p className="text-sm font-medium text-foreground truncate">John Smith</p>
-                <p className="text-xs text-muted-foreground truncate">john.smith@email.com</p>
+                <p className="text-sm font-medium text-foreground truncate">{tenant?.name ?? profile?.firstName}</p>
+                <p className="text-xs text-muted-foreground truncate">{profile?.email}</p>
               </div>
             </div>
-            <Link
-              to="/login"
-              className="flex items-center gap-2 px-3 py-2 rounded-lg text-sm text-muted-foreground hover:bg-accent hover:text-foreground transition-colors"
+            <button
+              type="button"
+              onClick={handleLogout}
+              className="flex w-full items-center gap-2 px-3 py-2 rounded-lg text-sm text-muted-foreground hover:bg-accent hover:text-foreground transition-colors"
             >
               <LogOut className="w-4 h-4" />
               <span>Logout</span>
-            </Link>
+            </button>
           </div>
         </div>
       </aside>
