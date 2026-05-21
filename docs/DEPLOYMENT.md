@@ -12,6 +12,12 @@ npm run build
 
 Output is in `dist/`.
 
+## Netlify
+
+The repo includes `netlify.toml` (build → `dist/`, SPA fallback). In the Netlify UI, set **Environment variables** for every `VITE_*` value from `.env.example`, then trigger a new deploy so Vite inlines them at build time.
+
+Add your Netlify site URL under Firebase Console → Authentication → **Authorized domains** if sign-in fails in production.
+
 ## Firebase Hosting
 
 1. Configure `.firebaserc` with production project ID
