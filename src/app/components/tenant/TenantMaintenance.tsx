@@ -1,12 +1,14 @@
 import { useEffect, useMemo, useState } from 'react';
 import { ClipboardList, History, Plus, Wrench } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
-import { PageLoader } from '../common/LoadingSpinner';
 import { EmptyState } from '../common/EmptyState';
 import { Card } from '../ui/card';
 import { Button } from '../ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../ui/tabs';
 import { Sheet, SheetContent } from '../ui/sheet';
+import { TenantPageHeader } from './shared/TenantPageHeader';
+import { TenantStatCard } from './shared/TenantStatCard';
+import { TenantPageSkeleton } from './shared/TenantPageSkeleton';
 import { TenantMaintenanceRequestCard } from './maintenance/TenantMaintenanceRequestCard';
 import { TenantMaintenanceFilters } from './maintenance/TenantMaintenanceFilters';
 import { TenantMaintenanceDetail } from './maintenance/TenantMaintenanceDetail';
@@ -91,7 +93,7 @@ export const TenantMaintenance = () => {
     listMaintenanceUpdates(selected.id).then(setUpdates);
   };
 
-  if (loading) return <PageLoader />;
+  if (loading) return <TenantPageSkeleton />;
   if (!tenant) {
     return (
       <Card className="p-6">
@@ -103,48 +105,38 @@ export const TenantMaintenance = () => {
   const tenantName = tenant.name;
 
   return (
-    <div className="space-y-4">
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-        <div>
-          <h1 className="text-2xl lg:text-3xl font-semibold text-foreground">Maintenance</h1>
-          <p className="text-sm text-muted-foreground">
-            Submit requests, track repairs, and view history
-          </p>
-        </div>
-        <Button variant="primary" onClick={() => setShowNewRequest(true)}>
-          <Plus className="w-4 h-4 mr-2" />
-          New Request
-        </Button>
-      </div>
+    <div className="space-y-5">
+      <TenantPageHeader
+        title="Maintenance"
+        description="Submit requests, track repairs, and view history"
+        actions={
+          <Button variant="primary" onClick={() => setShowNewRequest(true)}>
+            <Plus className="mr-2 h-4 w-4" />
+            New Request
+          </Button>
+        }
+      />
 
-      <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-        <Card className="p-3 flex items-center gap-3">
-          <div className="w-10 h-10 rounded-xl bg-amber-500/10 flex items-center justify-center shrink-0">
-            <Wrench className="w-5 h-5 text-amber-600" />
-          </div>
-          <div>
-            <p className="text-xl font-bold">{openCount}</p>
-            <p className="text-xs text-muted-foreground">Active requests</p>
-          </div>
-        </Card>
-        <Card className="p-3 flex items-center gap-3">
-          <div className="w-10 h-10 rounded-xl bg-emerald-500/10 flex items-center justify-center shrink-0">
-            <ClipboardList className="w-5 h-5 text-emerald-600" />
-          </div>
-          <div>
-            <p className="text-xl font-bold">{completedCount}</p>
-            <p className="text-xs text-muted-foreground">Completed</p>
-          </div>
-        </Card>
-        <Card className="p-3 flex items-center gap-3 col-span-2 sm:col-span-1">
-          <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center shrink-0">
-            <History className="w-5 h-5 text-primary" />
-          </div>
-          <div>
-            <p className="text-xl font-bold">{requests.length}</p>
-            <p className="text-xs text-muted-foreground">Total requests</p>
-          </div>
-        </Card>
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+        <TenantStatCard
+          label="Active requests"
+          value={String(openCount)}
+          icon={Wrench}
+          variant={openCount > 0 ? 'warning' : 'default'}
+        />
+        <TenantStatCard
+          label="Completed"
+          value={String(completedCount)}
+          icon={ClipboardList}
+          variant="success"
+        />
+        <TenantStatCard
+          label="Total requests"
+          value={String(requests.length)}
+          icon={History}
+          variant="primary"
+          className="col-span-2 sm:col-span-1"
+        />
       </div>
 
       <Tabs value={activeTab} onValueChange={setActiveTab}>

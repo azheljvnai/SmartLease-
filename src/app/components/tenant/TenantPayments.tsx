@@ -1,21 +1,43 @@
 import { useEffect, useMemo, useState } from 'react';
 import { toast } from 'sonner';
 import { useSearchParams } from 'react-router';
-import { Card } from '../ui/card';
-import { Button } from '../ui/button';
-import { Badge } from '../ui/badge';
 import {
   Calendar,
-  X,
   CreditCard,
   Smartphone,
   Wallet,
   CheckCircle2,
   AlertCircle,
   Banknote,
+  Receipt,
+  Clock,
 } from 'lucide-react';
+import { differenceInDays, parseISO } from 'date-fns';
 import { useAuth } from '../../contexts/AuthContext';
-import { PageLoader } from '../common/LoadingSpinner';
+import { Button } from '../ui/button';
+import { Badge } from '../ui/badge';
+import { Card } from '../ui/card';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '../ui/dialog';
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '../ui/table';
+import { EmptyState } from '../common/EmptyState';
+import { TenantPageHeader } from './shared/TenantPageHeader';
+import { TenantStatCard } from './shared/TenantStatCard';
+import { TenantSection } from './shared/TenantSection';
+import { TenantPageSkeleton } from './shared/TenantPageSkeleton';
 import {
   listInvoicesByTenant,
   isInvoicePayable,
@@ -93,6 +115,11 @@ export const TenantPayments = () => {
     return { outstanding, currentMonthRent, totalPaid };
   }, [invoices, payableInvoices, payments]);
 
+  const nextDue = payableInvoices[0];
+  const daysLeft = nextDue
+    ? differenceInDays(parseISO(nextDue.dueDate), new Date())
+    : null;
+
   const openPayModal = (invoice?: Invoice) => {
     const inv = invoice ?? payableInvoices[0];
     if (!inv) {
@@ -136,62 +163,103 @@ export const TenantPayments = () => {
     }
   };
 
-  if (loading) return <PageLoader />;
+  if (loading) return <TenantPageSkeleton />;
   if (!tenant) {
     return (
-      <Card>
-        <p>No tenant profile linked. Register with the same email your property manager used.</p>
+      <Card className="p-6">
+        <p className="text-muted-foreground">
+          No tenant profile linked. Register with the same email your property manager used.
+        </p>
       </Card>
     );
   }
 
   return (
-    <div className="space-y-4">
-      <div className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-3">
-        <div>
-          <h1 className="text-2xl lg:text-3xl font-semibold text-foreground">Payments</h1>
-          <p className="text-sm text-muted-foreground">Pay rent securely via PayMongo</p>
+    <div className="space-y-5">
+      <TenantPageHeader
+        title="Payments"
+        description="View bills, pay rent, and track payment history"
+        actions={
+          payableInvoices.length > 0 ? (
+            <Button variant="primary" onClick={() => openPayModal()}>
+              <CreditCard className="mr-2 h-4 w-4" />
+              Pay Now
+            </Button>
+          ) : undefined
+        }
+      />
+
+      {/* Outstanding hero */}
+      <Card
+        padding={false}
+        className={
+          summary.outstanding === 0
+            ? 'overflow-hidden border-emerald-200 bg-gradient-to-r from-emerald-50 to-emerald-100/50'
+            : 'overflow-hidden border-amber-200 bg-gradient-to-r from-amber-50 to-orange-50'
+        }
+      >
+        <div className="flex flex-col gap-3 p-5 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex items-start gap-3">
+            <div
+              className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-xl ${
+                summary.outstanding === 0 ? 'bg-emerald-500/15' : 'bg-amber-500/15'
+              }`}
+            >
+              {summary.outstanding === 0 ? (
+                <CheckCircle2 className="h-6 w-6 text-emerald-600" />
+              ) : (
+                <AlertCircle className="h-6 w-6 text-amber-600" />
+              )}
+            </div>
+            <div>
+              <p className="text-sm text-muted-foreground">Outstanding Balance</p>
+              <p className="text-2xl font-bold tracking-tight sm:text-3xl">
+                {formatCurrency(summary.outstanding)}
+              </p>
+              {nextDue && summary.outstanding > 0 && daysLeft !== null && (
+                <p className="mt-0.5 flex items-center gap-1 text-xs text-muted-foreground">
+                  <Clock className="h-3.5 w-3.5" />
+                  {daysLeft < 0
+                    ? `${Math.abs(daysLeft)} days overdue`
+                    : daysLeft === 0
+                      ? 'Due today'
+                      : `Due in ${daysLeft} days`}
+                  {' · '}
+                  {formatDate(nextDue.dueDate)}
+                </p>
+              )}
+              {summary.outstanding === 0 && (
+                <p className="mt-0.5 text-sm text-emerald-700">All bills are paid. You&apos;re all set!</p>
+              )}
+            </div>
+          </div>
         </div>
-        {payableInvoices.length > 0 && (
-          <Button variant="primary" onClick={() => openPayModal()}>
-            <CreditCard className="w-4 h-4 mr-2" />
-            Pay Now
-          </Button>
-        )}
+      </Card>
+
+      <div className="grid grid-cols-2 gap-3 lg:grid-cols-3">
+        <TenantStatCard
+          label="Outstanding"
+          value={formatCurrency(summary.outstanding)}
+          icon={AlertCircle}
+          variant={summary.outstanding > 0 ? 'warning' : 'success'}
+        />
+        <TenantStatCard
+          label="This Month"
+          value={formatCurrency(summary.currentMonthRent)}
+          icon={Calendar}
+          variant="primary"
+        />
+        <TenantStatCard
+          label="Total Paid"
+          value={formatCurrency(summary.totalPaid)}
+          icon={CheckCircle2}
+          variant="success"
+          className="col-span-2 lg:col-span-1"
+        />
       </div>
 
-      <div className="grid grid-cols-2 lg:grid-cols-3 gap-3">
-        <Card className="p-3 sm:p-4">
-          <div className="flex items-center gap-2 text-muted-foreground mb-1">
-            <AlertCircle className="w-4 h-4" />
-            <span className="text-xs">Outstanding Balance</span>
-          </div>
-          <p className="text-lg sm:text-xl font-bold">{formatCurrency(summary.outstanding)}</p>
-        </Card>
-        <Card className="p-3 sm:p-4">
-          <div className="flex items-center gap-2 text-muted-foreground mb-1">
-            <Calendar className="w-4 h-4" />
-            <span className="text-xs">This Month&apos;s Rent</span>
-          </div>
-          <p className="text-lg sm:text-xl font-bold">{formatCurrency(summary.currentMonthRent)}</p>
-        </Card>
-        <Card className="p-3 sm:p-4 col-span-2 lg:col-span-1">
-          <div className="flex items-center gap-2 text-muted-foreground mb-1">
-            <CheckCircle2 className="w-4 h-4" />
-            <span className="text-xs">Total Payments Made</span>
-          </div>
-          <p className="text-lg sm:text-xl font-bold text-emerald-600 dark:text-emerald-400">
-            {formatCurrency(summary.totalPaid)}
-          </p>
-        </Card>
-      </div>
-
-      {payableInvoices.length > 0 && (
-        <Card className="p-4">
-          <h3 className="font-semibold mb-3 flex items-center gap-2">
-            <Banknote className="w-4 h-4" />
-            Bills to Pay
-          </h3>
+      {payableInvoices.length > 0 ? (
+        <TenantSection title="Bills to Pay" description="Outstanding invoices requiring payment">
           <div className="space-y-2">
             {payableInvoices.map((inv) => {
               const status = effectiveInvoiceStatus(inv);
@@ -199,23 +267,23 @@ export const TenantPayments = () => {
               return (
                 <div
                   key={inv.id}
-                  className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-3 rounded-xl border bg-card"
+                  className="flex flex-col gap-3 rounded-xl border bg-card p-4 transition-shadow hover:shadow-sm sm:flex-row sm:items-center sm:justify-between"
                 >
                   <div className="min-w-0">
-                    <div className="flex items-center gap-2 flex-wrap">
+                    <div className="flex flex-wrap items-center gap-2">
                       <p className="font-semibold">{inv.invoiceNumber}</p>
                       {isMaintenance && <Badge variant="info">Maintenance</Badge>}
                       <Badge variant={status === 'overdue' ? 'danger' : 'warning'}>
                         {status === 'overdue' ? 'Overdue' : 'Due'}
                       </Badge>
                     </div>
-                    <p className="text-sm text-muted-foreground truncate">
+                    <p className="mt-0.5 text-sm text-muted-foreground truncate">
                       {inv.notes ?? formatBillingPeriod(inv.billingPeriodStart, inv.billingPeriodEnd)}
                     </p>
                     <p className="text-xs text-muted-foreground">Due {formatDate(inv.dueDate)}</p>
                   </div>
                   <div className="flex items-center gap-3 shrink-0">
-                    <p className="text-lg font-bold">{formatCurrency(getInvoiceTotalDue(inv))}</p>
+                    <p className="text-xl font-bold">{formatCurrency(getInvoiceTotalDue(inv))}</p>
                     <Button size="sm" variant="primary" onClick={() => openPayModal(inv)}>
                       Pay
                     </Button>
@@ -224,39 +292,53 @@ export const TenantPayments = () => {
               );
             })}
           </div>
+        </TenantSection>
+      ) : (
+        <Card className="p-0 overflow-hidden">
+          <EmptyState
+            icon={Banknote}
+            title="No bills due"
+            description="You have no outstanding invoices. Your account is up to date."
+          />
         </Card>
       )}
 
-      <Card className="p-4">
-        <h3 className="font-semibold mb-3">Payment History</h3>
+      <TenantSection title="Payment History" description="All completed and pending payments">
         {payments.length === 0 ? (
-          <p className="text-sm text-muted-foreground">No payments yet.</p>
+          <EmptyState
+            icon={Receipt}
+            title="No payments yet"
+            description="Your payment history will appear here once you make your first payment."
+            actionLabel={payableInvoices.length > 0 ? 'Pay Now' : undefined}
+            onAction={payableInvoices.length > 0 ? () => openPayModal() : undefined}
+          />
         ) : (
-          <div className="overflow-x-auto -mx-4 px-4">
-            <table className="w-full text-sm min-w-[560px]">
-              <thead>
-                <tr className="border-b text-left text-muted-foreground">
-                  <th className="pb-2 pr-3 font-medium">Invoice</th>
-                  <th className="pb-2 pr-3 font-medium">Period</th>
-                  <th className="pb-2 pr-3 font-medium text-right">Amount</th>
-                  <th className="pb-2 pr-3 font-medium">Method</th>
-                  <th className="pb-2 pr-3 font-medium">Date</th>
-                  <th className="pb-2 pr-3 font-medium">Reference</th>
-                  <th className="pb-2 font-medium">Status</th>
-                </tr>
-              </thead>
-              <tbody>
+          <div className="overflow-x-auto -mx-4 sm:mx-0">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Invoice</TableHead>
+                  <TableHead className="hidden sm:table-cell">Period</TableHead>
+                  <TableHead className="text-right">Amount</TableHead>
+                  <TableHead className="hidden md:table-cell">Method</TableHead>
+                  <TableHead className="hidden lg:table-cell">Date</TableHead>
+                  <TableHead>Status</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
                 {payments.map((payment) => (
-                  <tr key={payment.id} className="border-b last:border-0">
-                    <td className="py-2.5 pr-3 font-medium">{payment.invoiceNumber ?? '—'}</td>
-                    <td className="py-2.5 pr-3 text-muted-foreground text-xs">
+                  <TableRow key={payment.id}>
+                    <TableCell className="font-medium">{payment.invoiceNumber ?? '—'}</TableCell>
+                    <TableCell className="hidden sm:table-cell text-muted-foreground text-xs">
                       {formatBillingPeriod(payment.billingPeriodStart, payment.billingPeriodEnd)}
-                    </td>
-                    <td className="py-2.5 pr-3 text-right font-medium">
+                    </TableCell>
+                    <TableCell className="text-right font-semibold">
                       {formatCurrency(payment.amount)}
-                    </td>
-                    <td className="py-2.5 pr-3">{formatManualPaymentMethod(payment.method)}</td>
-                    <td className="py-2.5 pr-3">
+                    </TableCell>
+                    <TableCell className="hidden md:table-cell">
+                      {formatManualPaymentMethod(payment.method)}
+                    </TableCell>
+                    <TableCell className="hidden lg:table-cell text-muted-foreground">
                       {payment.paymentDate
                         ? formatDate(payment.paymentDate)
                         : formatDate(
@@ -264,77 +346,69 @@ export const TenantPayments = () => {
                               ? payment.createdAt.toISOString().split('T')[0]
                               : String(payment.createdAt).split('T')[0],
                           )}
-                    </td>
-                    <td className="py-2.5 pr-3 font-mono text-xs">
-                      {payment.referenceNumber ?? '—'}
-                    </td>
-                    <td className="py-2.5">
+                    </TableCell>
+                    <TableCell>
                       <Badge variant={payment.status === 'completed' ? 'success' : 'warning'}>
                         {payment.status === 'completed' ? 'Paid' : payment.status}
                       </Badge>
-                    </td>
-                  </tr>
+                    </TableCell>
+                  </TableRow>
                 ))}
-              </tbody>
-            </table>
+              </TableBody>
+            </Table>
           </div>
         )}
-      </Card>
+      </TenantSection>
 
-      {showPaymentModal && payInvoice && (
-        <div className="fixed inset-0 bg-black/50 flex items-end sm:items-center justify-center z-50 p-4">
-          <Card className="w-full max-w-md max-h-[90vh] overflow-y-auto p-4 sm:p-5">
-            <div className="flex justify-between mb-4">
-              <div>
-                <h3 className="text-lg font-semibold">Pay Invoice</h3>
-                <p className="text-sm text-muted-foreground">{payInvoice.invoiceNumber}</p>
+      <Dialog open={showPaymentModal} onOpenChange={setShowPaymentModal}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Pay Invoice</DialogTitle>
+            <DialogDescription>{payInvoice?.invoiceNumber}</DialogDescription>
+          </DialogHeader>
+
+          {payInvoice && (
+            <>
+              <p className="text-3xl font-bold tracking-tight">
+                {formatCurrency(getInvoiceTotalDue(payInvoice))}
+              </p>
+              <p className="text-sm text-muted-foreground">
+                You will be redirected to PayMongo to complete payment securely via GCash, Maya, or
+                card.
+              </p>
+
+              <div className="flex flex-col gap-2">
+                {(
+                  [
+                    { id: 'gcash' as const, label: 'GCash', icon: Smartphone },
+                    { id: 'paymaya' as const, label: 'Maya', icon: Wallet },
+                    { id: 'card' as const, label: 'Credit / Debit Card', icon: CreditCard },
+                  ] as const
+                ).map(({ id, label, icon: Icon }) => (
+                  <Button
+                    key={id}
+                    variant={paymentMethod === id ? 'primary' : 'outline'}
+                    onClick={() => setPaymentMethod(id)}
+                    className="justify-start"
+                  >
+                    <Icon className="mr-2 h-4 w-4" />
+                    {label}
+                  </Button>
+                ))}
               </div>
-              <button type="button" onClick={() => setShowPaymentModal(false)}>
-                <X className="w-5 h-5" />
-              </button>
-            </div>
+            </>
+          )}
 
-            <p className="text-2xl font-bold mb-4">{formatCurrency(getInvoiceTotalDue(payInvoice))}</p>
-
-            <p className="text-sm text-muted-foreground mb-4">
-              You will be redirected to PayMongo to complete payment securely.
-            </p>
-
-            <div className="flex flex-col gap-2 mb-4">
-              <Button
-                variant={paymentMethod === 'gcash' ? 'primary' : 'outline'}
-                onClick={() => setPaymentMethod('gcash')}
-                className="justify-start"
-              >
-                <Smartphone className="w-4 h-4 mr-2" /> GCash
-              </Button>
-              <Button
-                variant={paymentMethod === 'paymaya' ? 'primary' : 'outline'}
-                onClick={() => setPaymentMethod('paymaya')}
-                className="justify-start"
-              >
-                <Wallet className="w-4 h-4 mr-2" /> Maya
-              </Button>
-              <Button
-                variant={paymentMethod === 'card' ? 'primary' : 'outline'}
-                onClick={() => setPaymentMethod('card')}
-                className="justify-start"
-              >
-                <CreditCard className="w-4 h-4 mr-2" /> Credit / Debit Card
-              </Button>
-            </div>
-
-            <div className="flex gap-2 mt-6">
-              <Button variant="outline" className="flex-1" onClick={() => setShowPaymentModal(false)}>
-                Cancel
-              </Button>
-              <Button variant="primary" className="flex-1" loading={submitting} onClick={handlePay}>
-                Continue to PayMongo
-              </Button>
-            </div>
-          </Card>
-        </div>
-      )}
+          <DialogFooter className="gap-2 sm:gap-0">
+            <Button variant="outline" onClick={() => setShowPaymentModal(false)}>
+              Cancel
+            </Button>
+            <Button variant="primary" loading={submitting} onClick={handlePay}>
+              Continue to PayMongo
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };
