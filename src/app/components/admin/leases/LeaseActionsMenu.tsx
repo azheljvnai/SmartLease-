@@ -47,7 +47,11 @@ export function LeaseActionsMenu({ lease, onAction, loading }: Props) {
   const hasUnsigned = Boolean(lease.documents?.unsigned);
   const hasSigned = Boolean(lease.documents?.signed);
   const canDelete = lifecycle === 'draft' && !hasSigned;
-  const canTerminate = lease.status === 'active' || lifecycle === 'signed';
+  const canTerminate =
+    lease.status === 'active' ||
+    lifecycle === 'verified' ||
+    lifecycle === 'signed' ||
+    lifecycle === 'pending_verification';
   const canRenew =
     lease.status === 'active' ||
     lease.status === 'expired' ||

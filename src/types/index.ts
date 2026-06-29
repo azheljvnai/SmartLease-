@@ -74,11 +74,14 @@ export type LeaseStatus = 'active' | 'expired' | 'pending' | 'terminated' | 'ren
 export type LeaseLifecycleStatus =
   | 'draft'
   | 'pending_signature'
+  | 'pending_verification'
+  | 'verified'
   | 'signed'
   | 'active'
   | 'expired'
   | 'terminated'
-  | 'renewed';
+  | 'renewed'
+  | 'rejected';
 
 export type LeaseType =
   | 'fixed_term'
@@ -92,8 +95,33 @@ export type LeaseDocumentStatus =
   | 'draft'
   | 'lease_agreement_generated'
   | 'awaiting_signed_copy'
+  | 'pending_verification'
+  | 'verified'
+  | 'rejected'
+  /** @deprecated Use `verified` — kept for existing records */
   | 'signed_lease_uploaded'
   | 'active_lease';
+
+/** User-facing lease document status shown in tenant and admin portals. */
+export type LeaseDisplayStatus =
+  | 'draft'
+  | 'pending_signature'
+  | 'pending_verification'
+  | 'verified'
+  | 'active'
+  | 'expired'
+  | 'renewed'
+  | 'terminated'
+  | 'rejected';
+
+export interface LeaseSignedVerification {
+  uploadedBy: 'admin' | 'tenant';
+  uploadedAt: string;
+  verifiedAt?: string;
+  verifiedBy?: string;
+  rejectedAt?: string;
+  rejectionReason?: string;
+}
 
 export interface LeaseHistoryEntry {
   id: string;
@@ -182,6 +210,7 @@ export interface LeaseDocumentFile {
   downloadUrl?: string;
   fileName: string;
   uploadedAt: FirestoreTimestamp;
+  contentType?: string;
   /** Inline base64 fallback when Firebase Storage is unavailable (Spark plan). */
   inlineData?: string;
   /** Points to `leases/{leaseId}/documentFiles/{id}` when inline data is stored separately. */
@@ -216,6 +245,7 @@ export interface Lease {
   leaseType?: LeaseType;
   status: LeaseStatus;
   documentStatus: LeaseDocumentStatus;
+  signedVerification?: LeaseSignedVerification;
   agreement?: LeaseAgreementFormData;
   documents?: LeaseDocuments;
   previousLeaseId?: string;
@@ -320,7 +350,7 @@ export interface PaymentRecord {
   verifiedAt?: string;
   verifiedBy?: string;
   status: PaymentRecordStatus;
-  gateway?: 'manual';
+  gateway?: 'manual' | 'paymongo' | 'demo';
   monthLabel?: string;
   createdAt: FirestoreTimestamp;
 }

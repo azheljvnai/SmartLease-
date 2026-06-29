@@ -2,8 +2,9 @@ import { useEffect, useState } from 'react';
 import { Card } from '../ui/card';
 import { Button } from '../ui/button';
 import {
-  LEASE_DOCUMENT_STATUS_LABELS,
-  leaseDocumentStatusVariant,
+  getLeaseDisplayStatus,
+  LEASE_DISPLAY_STATUS_LABELS,
+  leaseDisplayStatusVariant,
 } from '../../../lib/lease-documents';
 import { Badge } from '../ui/badge';
 import { Link, useNavigate } from 'react-router';
@@ -120,8 +121,8 @@ export const TenantHome = () => {
             <div><p className="text-muted-foreground">Lease Period</p><p>{formatDate(lease.startDate)} – {formatDate(lease.endDate)}</p></div>
             <div><p className="text-muted-foreground">Monthly Rent</p><p className="font-semibold">{formatCurrency(lease.rent)}</p></div>
             <div>
-              <Badge variant={leaseDocumentStatusVariant(lease.documentStatus ?? 'draft')}>
-                {LEASE_DOCUMENT_STATUS_LABELS[lease.documentStatus ?? 'draft']}
+              <Badge variant={leaseDisplayStatusVariant(getLeaseDisplayStatus(lease))}>
+                {LEASE_DISPLAY_STATUS_LABELS[getLeaseDisplayStatus(lease)]}
               </Badge>
             </div>
           </div>

@@ -16,6 +16,7 @@ import { Reports } from "./components/admin/Reports";
 import { NoticesAdmin } from "./components/admin/NoticesAdmin";
 import { TenantHome } from "./components/tenant/TenantHome";
 import { TenantPayments } from "./components/tenant/TenantPayments";
+import { PayMongoCheckout } from "./components/tenant/PayMongoCheckout";
 import { TenantMaintenance } from "./components/tenant/TenantMaintenance";
 import { TenantProfile } from "./components/tenant/TenantProfile";
 import { TenantLease } from "./components/tenant/TenantLease";
@@ -60,6 +61,7 @@ export const router = createBrowserRouter([
           { index: true, Component: TenantHome },
           { path: "lease", Component: TenantLease },
           { path: "payments", Component: TenantPayments },
+          { path: "payments/checkout", Component: PayMongoCheckout },
           { path: "maintenance", Component: TenantMaintenance },
           { path: "profile", Component: TenantProfile },
         ],

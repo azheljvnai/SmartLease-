@@ -1,6 +1,7 @@
 export interface PaymentInput {
   tenantId: string;
   invoiceId: string;
+  invoiceNumber?: string;
   amount: number;
   method: string;
   tenantName: string;

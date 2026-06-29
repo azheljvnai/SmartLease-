@@ -5,6 +5,7 @@ import type {
   LeaseStatus,
   LeaseType,
 } from '../types';
+import { getLeaseDisplayStatus } from './lease-documents';
 import { parseISO, differenceInDays, isBefore, isAfter } from 'date-fns';
 
 export const LEASE_TYPE_LABELS: Record<LeaseType, string> = {
@@ -26,11 +27,14 @@ export const LEASE_STATUS_LABELS: Record<LeaseStatus, string> = {
 export const LEASE_LIFECYCLE_LABELS: Record<LeaseLifecycleStatus, string> = {
   draft: 'Draft',
   pending_signature: 'Pending Signature',
-  signed: 'Signed',
+  pending_verification: 'Pending Verification',
+  verified: 'Verified',
+  signed: 'Verified',
   active: 'Active',
   expired: 'Expired',
   terminated: 'Terminated',
   renewed: 'Renewed',
+  rejected: 'Rejected',
 };
 
 export const EXPIRING_SOON_DAYS = 30;
@@ -77,17 +81,15 @@ export function resolveLeaseType(lease: Lease): LeaseType {
 }
 
 export function getLeaseLifecycleStatus(lease: Lease): LeaseLifecycleStatus {
-  if (lease.status === 'renewed') return 'renewed';
-  if (lease.status === 'terminated') return 'terminated';
-  if (lease.status === 'expired') return 'expired';
-  if (lease.status === 'active' && lease.documentStatus === 'active_lease') return 'active';
-
-  const doc = lease.documentStatus ?? 'draft';
-  if (doc === 'signed_lease_uploaded') return 'signed';
-  if (doc === 'lease_agreement_generated' || doc === 'awaiting_signed_copy') {
-    return 'pending_signature';
-  }
-  if (doc === 'active_lease') return 'active';
+  const display = getLeaseDisplayStatus(lease);
+  if (display === 'rejected') return 'rejected';
+  if (display === 'pending_verification') return 'pending_verification';
+  if (display === 'verified') return 'verified';
+  if (display === 'pending_signature') return 'pending_signature';
+  if (display === 'active') return 'active';
+  if (display === 'expired') return 'expired';
+  if (display === 'terminated') return 'terminated';
+  if (display === 'renewed') return 'renewed';
   return 'draft';
 }
 
@@ -236,11 +238,13 @@ export function lifecycleStatusVariant(
 ): 'default' | 'success' | 'warning' | 'danger' | 'info' {
   switch (status) {
     case 'active':
+    case 'verified':
+    case 'signed':
       return 'success';
     case 'pending_signature':
+    case 'pending_verification':
       return 'warning';
-    case 'signed':
-      return 'info';
+    case 'rejected':
     case 'expired':
     case 'terminated':
       return 'danger';
@@ -275,8 +279,13 @@ export function mapLifecycleToDocumentStatuses(
       return ['draft'];
     case 'pending_signature':
       return ['lease_agreement_generated', 'awaiting_signed_copy'];
+    case 'pending_verification':
+      return ['pending_verification'];
+    case 'verified':
     case 'signed':
-      return ['signed_lease_uploaded'];
+      return ['verified', 'signed_lease_uploaded'];
+    case 'rejected':
+      return ['rejected'];
     case 'active':
       return ['active_lease'];
     default:

@@ -46,6 +46,7 @@ import {
   validateLeaseAgreementForm,
 } from '../lease/LeaseInformationForm';
 import { LeaseDocumentPanel } from '../lease/LeaseDocumentPanel';
+import { canActivateLease } from '../../../lib/lease-documents';
 import { LeaseListView } from './leases/LeaseListView';
 import { LeaseDetailView } from './leases/LeaseDetailView';
 import type { LeaseAction } from './leases/LeaseActionsMenu';
@@ -628,7 +629,7 @@ export const LeaseManagement = () => {
                     await refreshLeases();
                   }}
                 />
-                {currentLease.documentStatus === 'signed_lease_uploaded' && (
+                {currentLease && canActivateLease(currentLease) && (
                   <Button
                     variant="primary"
                     loading={submitting}

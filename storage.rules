@@ -41,7 +41,8 @@ service firebase.storage {
         || (isTenant() && leaseTenantId(leaseId) == userTenantId());
       allow write: if isAdmin()
         || (isTenant() && docType == 'signed' && leaseTenantId(leaseId) == userTenantId()
-          && request.resource.contentType == 'application/pdf'
+          && (request.resource.contentType == 'application/pdf'
+            || request.resource.contentType.matches('image/.*'))
           && request.resource.size < 10 * 1024 * 1024);
     }
 

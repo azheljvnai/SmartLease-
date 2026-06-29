@@ -9,6 +9,16 @@ import { app, db } from '../firebase/app';
 import { COLLECTIONS, isFirebaseStorageEnabled } from '../firebase/config';
 
 const MAX_INLINE_BYTES = 900_000;
+const MAX_SIGNED_LEASE_STORAGE_BYTES = 10 * 1024 * 1024;
+
+/** Max signed-lease upload size: ~900KB inline on Spark, 10MB when Firebase Storage is enabled. */
+export function maxSignedLeaseUploadBytes(): number {
+  return isFirebaseStorageEnabled() ? MAX_SIGNED_LEASE_STORAGE_BYTES : MAX_INLINE_BYTES;
+}
+
+export function usesInlineDocumentStorage(): boolean {
+  return !isFirebaseStorageEnabled();
+}
 
 export function isStorageEnabled(): boolean {
   return isFirebaseStorageEnabled();
@@ -75,7 +85,7 @@ async function storePdfBlob(
 
   if (blob.size > MAX_INLINE_BYTES) {
     throw new Error(
-      `PDF is too large (${Math.round(blob.size / 1024)}KB). Enable Firebase Storage (Blaze plan), set VITE_USE_FIREBASE_STORAGE=true, and deploy storage rules — or upload a smaller file.`,
+      `PDF is too large (${Math.round(blob.size / 1024)}KB). On the Spark (free) plan, files are stored in Firestore with a ~900KB limit — use a smaller or compressed PDF.`,
     );
   }
 
@@ -134,26 +144,68 @@ export async function uploadSignedLeasePdf(
   downloadUrl: string;
   inlineData?: string;
   inlineStorageId?: 'unsigned' | 'signed';
+  contentType: string;
 }> {
-  if (file.type !== 'application/pdf') {
-    throw new Error('Signed lease must be a PDF file.');
+  return uploadSignedLeaseFile(leaseId, file);
+}
+
+const SIGNED_LEASE_TYPES = [
+  'application/pdf',
+  'image/jpeg',
+  'image/png',
+  'image/webp',
+  'image/heic',
+  'image/heif',
+];
+
+export async function uploadSignedLeaseFile(
+  leaseId: string,
+  file: File,
+): Promise<{
+  storagePath: string;
+  downloadUrl: string;
+  inlineData?: string;
+  inlineStorageId?: 'unsigned' | 'signed';
+  contentType: string;
+}> {
+  if (!SIGNED_LEASE_TYPES.includes(file.type)) {
+    throw new Error('Signed lease must be a PDF or image (JPEG, PNG, WebP).');
   }
 
-  const bytes = new Uint8Array(await file.arrayBuffer());
-  const path = leaseDocumentPath(leaseId, 'signed');
-  const blob = new Blob([bytes], { type: 'application/pdf' });
-  const result = await storePdfBlob(path, blob);
+  const maxBytes = maxSignedLeaseUploadBytes();
+  if (file.size > maxBytes) {
+    const limitKb = Math.round(maxBytes / 1024);
+    throw new Error(
+      usesInlineDocumentStorage()
+        ? `Signed lease must be under ${limitKb}KB on the Spark plan. Use a compressed PDF or a smaller photo.`
+        : `Signed lease file must be under ${Math.round(maxBytes / (1024 * 1024))}MB.`,
+    );
+  }
+
+  const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, '_') || `signed-lease-${leaseId}`;
+  const path = `leases/${leaseId}/signed/${safeName}`;
+  const blob = new Blob([await file.arrayBuffer()], { type: file.type });
+
+  const inlineLimit = usesInlineDocumentStorage() ? MAX_INLINE_BYTES : MAX_SIGNED_LEASE_STORAGE_BYTES;
+
+  let result: { storagePath: string; downloadUrl: string; inlineData?: string };
+  if (file.type === 'application/pdf') {
+    result = await storePdfBlob(path, blob);
+  } else {
+    result = await storeFileBlob(path, blob, file.type, inlineLimit);
+  }
 
   if (result.inlineData) {
-    await saveLeaseInlineDocument(leaseId, 'signed', result.inlineData, file.name || `signed-lease-${leaseId}.pdf`);
+    await saveLeaseInlineDocument(leaseId, 'signed', result.inlineData, safeName);
     return {
       storagePath: result.storagePath,
       downloadUrl: result.downloadUrl,
       inlineStorageId: 'signed',
+      contentType: file.type,
     };
   }
 
-  return { ...result, storagePath: path };
+  return { ...result, storagePath: path, contentType: file.type };
 }
 
 export function resolveDocumentUrl(file: {
@@ -214,6 +266,65 @@ export async function previewLeaseDocument(
   window.open(url, '_blank', 'noopener,noreferrer');
 }
 
+async function resolveLeaseDocumentUrl(
+  file: {
+    downloadUrl?: string;
+    inlineData?: string;
+    inlineStorageId?: 'unsigned' | 'signed';
+    fileName: string;
+  },
+  leaseId?: string,
+): Promise<string> {
+  let url = resolveDocumentUrl(file);
+
+  if (!url && file.inlineStorageId && leaseId) {
+    const inline = await getLeaseInlineDocument(leaseId, file.inlineStorageId);
+    if (inline) url = inline.inlineData;
+  }
+
+  if (!url) throw new Error('Document is not available.');
+  return url;
+}
+
+export async function printLeaseDocument(
+  file: {
+    downloadUrl?: string;
+    inlineData?: string;
+    inlineStorageId?: 'unsigned' | 'signed';
+    fileName: string;
+    contentType?: string;
+  },
+  leaseId?: string,
+): Promise<void> {
+  const url = await resolveLeaseDocumentUrl(file, leaseId);
+  const isPdf = file.contentType === 'application/pdf' || file.fileName.toLowerCase().endsWith('.pdf');
+
+  if (isPdf) {
+    const printWindow = window.open(url, '_blank', 'noopener,noreferrer');
+    if (printWindow) {
+      printWindow.addEventListener('load', () => {
+        printWindow.focus();
+        printWindow.print();
+      });
+    }
+    return;
+  }
+
+  const printWindow = window.open('', '_blank', 'noopener,noreferrer');
+  if (!printWindow) throw new Error('Pop-up blocked. Allow pop-ups to print this document.');
+
+  printWindow.document.write(`
+    <!DOCTYPE html>
+    <html>
+      <head><title>${file.fileName}</title></head>
+      <body style="margin:0;display:flex;justify-content:center;align-items:center;min-height:100vh;">
+        <img src="${url}" alt="Lease document" style="max-width:100%;height:auto;" onload="window.print();" />
+      </body>
+    </html>
+  `);
+  printWindow.document.close();
+}
+
 function blobToBase64(blob: Blob): Promise<string> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
@@ -257,7 +368,9 @@ async function storeFileBlob(
 
   if (blob.size > maxInlineBytes) {
     throw new Error(
-      `File is too large (${Math.round(blob.size / 1024)}KB). Enable Firebase Storage or use a smaller file.`,
+      usesInlineDocumentStorage()
+        ? `File is too large (${Math.round(blob.size / 1024)}KB). Spark plan stores files in Firestore (~${Math.round(maxInlineBytes / 1024)}KB max) — use a smaller or compressed file.`
+        : `File is too large (${Math.round(blob.size / 1024)}KB). Use a smaller file.`,
     );
   }
 

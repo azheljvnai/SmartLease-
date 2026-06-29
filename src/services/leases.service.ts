@@ -68,7 +68,7 @@ import { notifyTenantUser } from './notifications.service';
 
 import { generateLeaseAgreementPdf } from './lease-pdf.service';
 
-import { previewLeaseDocument, uploadLeasePdf, uploadSignedLeasePdf } from './storage.service';
+import { previewLeaseDocument, uploadLeasePdf, uploadSignedLeaseFile } from './storage.service';
 
 import { sendEmail, isEmailConfigured } from './email.service';
 
@@ -225,6 +225,32 @@ export async function getActiveLeaseByTenant(tenantId: string): Promise<Lease | 
 }
 
 
+
+export function subscribeCurrentLeaseByTenant(
+  tenantId: string,
+  callback: (lease: Lease | null) => void,
+): () => void {
+  return onSnapshot(query(col, where('tenantId', '==', tenantId)), (snap) => {
+    const leases = snap.docs.map((d) => docToData<Lease>(d));
+    if (leases.length === 0) {
+      callback(null);
+      return;
+    }
+
+    const sorted = [...leases].sort((a, b) => {
+      const aMs = new Date(serializeTimestamp(a.createdAt)).getTime();
+      const bMs = new Date(serializeTimestamp(b.createdAt)).getTime();
+      return bMs - aMs;
+    });
+
+    const current =
+      sorted.find((l) => l.status === 'active') ??
+      sorted.find((l) => l.documentStatus !== 'active_lease') ??
+      sorted[0];
+
+    callback(current ?? null);
+  });
+}
 
 export async function getCurrentLeaseByTenant(tenantId: string): Promise<Lease | null> {
   const leases = await listLeasesByTenant(tenantId);
@@ -613,7 +639,9 @@ export async function uploadSignedLeaseAgreement(
 
 
 
-  const uploaded = await uploadSignedLeasePdf(leaseId, file);
+  const uploaded = await uploadSignedLeaseFile(leaseId, file);
+  const now = new Date().toISOString();
+  const isTenantUpload = uploadedBy === 'tenant';
 
   const signed: LeaseDocumentFile = stripUndefined({
 
@@ -623,10 +651,24 @@ export async function uploadSignedLeaseAgreement(
 
     inlineStorageId: uploaded.inlineStorageId,
 
-    fileName: file.name || `signed-lease-${leaseId}.pdf`,
+    fileName: file.name || `signed-lease-${leaseId}`,
 
-    uploadedAt: new Date().toISOString(),
+    uploadedAt: now,
 
+    contentType: uploaded.contentType,
+
+  });
+
+  const documentStatus: LeaseDocumentStatus = isTenantUpload
+    ? 'pending_verification'
+    : 'verified';
+
+  const signedVerification = stripUndefined({
+    uploadedBy,
+    uploadedAt: now,
+    ...(isTenantUpload
+      ? {}
+      : { verifiedAt: now, verifiedBy: 'admin' }),
   });
 
 
@@ -635,7 +677,9 @@ export async function uploadSignedLeaseAgreement(
 
     documents: stripUndefined({ ...lease.documents, signed }),
 
-    documentStatus: 'signed_lease_uploaded',
+    documentStatus,
+
+    signedVerification,
 
     updatedAt: toTimestamp(),
 
@@ -643,7 +687,16 @@ export async function uploadSignedLeaseAgreement(
 
 
 
-  await logLeaseHistory(leaseId, `Signed lease uploaded by ${uploadedBy}`);
+  try {
+    await logLeaseHistory(
+      leaseId,
+      isTenantUpload ? 'Signed lease uploaded by tenant' : 'Signed lease uploaded by admin',
+      isTenantUpload ? 'Awaiting property manager verification' : 'Auto-verified (admin upload)',
+      uploadedBy,
+    );
+  } catch {
+    /* tenant clients may not have history write permission */
+  }
 
 
 
@@ -655,7 +708,9 @@ export async function uploadSignedLeaseAgreement(
 
     tenantName: lease.tenantName,
 
-    action: `Signed lease uploaded by ${uploadedBy}`,
+    action: isTenantUpload
+      ? 'Tenant uploaded signed lease — pending verification'
+      : `Signed lease uploaded by ${uploadedBy}`,
 
     status: 'success',
 
@@ -663,16 +718,110 @@ export async function uploadSignedLeaseAgreement(
 
 
 
-  await notifyTenantUser(lease.tenantId, {
+  if (isTenantUpload) {
+    await notifyTenantUser(lease.tenantId, {
+      title: 'Signed lease submitted',
+      body: 'Your signed lease has been submitted and is pending verification by your property manager.',
+      type: 'lease',
+    });
+  } else {
+    await notifyTenantUser(lease.tenantId, {
+      title: 'Signed lease received',
+      body: 'A signed copy of your lease agreement has been uploaded and verified.',
+      type: 'lease',
+    });
+  }
 
-    title: 'Signed lease received',
+}
 
-    body: 'A signed copy of your lease agreement has been uploaded.',
 
-    type: 'lease',
 
+export async function approveSignedLease(leaseId: string): Promise<void> {
+  const lease = await getLease(leaseId);
+  if (!lease) throw new Error('Lease not found.');
+  if (lease.documentStatus !== 'pending_verification') {
+    throw new Error('No signed lease is pending verification.');
+  }
+  if (!lease.documents?.signed) {
+    throw new Error('Signed lease document not found.');
+  }
+
+  const now = new Date().toISOString();
+
+  await updateDoc(doc(db, COLLECTIONS.leases, leaseId), {
+    documentStatus: 'verified' as LeaseDocumentStatus,
+    signedVerification: stripUndefined({
+      ...lease.signedVerification,
+      uploadedBy: lease.signedVerification?.uploadedBy ?? 'tenant',
+      uploadedAt: lease.signedVerification?.uploadedAt ?? now,
+      verifiedAt: now,
+      verifiedBy: 'admin',
+      rejectedAt: undefined,
+      rejectionReason: undefined,
+    }),
+    updatedAt: toTimestamp(),
   });
 
+  await logLeaseHistory(leaseId, 'Signed lease verified', 'Approved by property manager');
+
+  await createActivity({
+    type: 'lease',
+    tenantId: lease.tenantId,
+    tenantName: lease.tenantName,
+    action: 'Signed lease verified',
+    status: 'success',
+  });
+
+  await notifyTenantUser(lease.tenantId, {
+    title: 'Signed lease verified',
+    body: 'Your signed lease agreement has been verified. Your property manager may activate the lease shortly.',
+    type: 'lease',
+  });
+}
+
+
+
+export async function rejectSignedLease(leaseId: string, reason: string): Promise<void> {
+  const trimmed = reason.trim();
+  if (!trimmed) throw new Error('A rejection reason is required.');
+
+  const lease = await getLease(leaseId);
+  if (!lease) throw new Error('Lease not found.');
+  if (lease.documentStatus !== 'pending_verification') {
+    throw new Error('No signed lease is pending verification.');
+  }
+
+  const now = new Date().toISOString();
+
+  await updateDoc(doc(db, COLLECTIONS.leases, leaseId), {
+    documentStatus: 'rejected' as LeaseDocumentStatus,
+    signedVerification: stripUndefined({
+      ...lease.signedVerification,
+      uploadedBy: lease.signedVerification?.uploadedBy ?? 'tenant',
+      uploadedAt: lease.signedVerification?.uploadedAt ?? now,
+      rejectedAt: now,
+      rejectionReason: trimmed,
+      verifiedAt: undefined,
+      verifiedBy: undefined,
+    }),
+    updatedAt: toTimestamp(),
+  });
+
+  await logLeaseHistory(leaseId, 'Signed lease rejected', trimmed);
+
+  await createActivity({
+    type: 'lease',
+    tenantId: lease.tenantId,
+    tenantName: lease.tenantName,
+    action: 'Signed lease rejected',
+    status: 'danger',
+  });
+
+  await notifyTenantUser(lease.tenantId, {
+    title: 'Signed lease needs revision',
+    body: `Your signed lease was not accepted. Reason: ${trimmed}. Please upload a corrected copy.`,
+    type: 'lease',
+  });
 }
 
 
@@ -703,6 +852,11 @@ export async function activateLease(leaseId: string): Promise<void> {
 
     throw new Error('Upload the signed lease agreement before activation.');
 
+  }
+
+  const docStatus = lease.documentStatus ?? 'draft';
+  if (docStatus !== 'verified' && docStatus !== 'signed_lease_uploaded') {
+    throw new Error('The signed lease must be verified before activation.');
   }
 
 
