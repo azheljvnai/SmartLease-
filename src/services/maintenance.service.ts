@@ -33,6 +33,7 @@ import {
   normalizeMaintenanceStatus,
 } from '../lib/maintenance-labels';
 import { computeTotalCost } from '../lib/maintenance-utils';
+import { ensureMaintenanceChargeInvoice } from './invoices.service';
 
 const col = collection(db, COLLECTIONS.maintenanceRequests);
 const techCol = collection(db, COLLECTIONS.technicians);
@@ -87,10 +88,16 @@ export async function listMaintenanceByUnit(unitId: string): Promise<Maintenance
 export function subscribeMaintenanceByTenant(
   tenantId: string,
   callback: (requests: MaintenanceRequest[]) => void,
+  onError?: (error: Error) => void,
 ): () => void {
   return onSnapshot(
     query(col, where('tenantId', '==', tenantId), orderBy('submitted', 'desc')),
     (snap) => callback(snap.docs.map((d) => docToData<MaintenanceRequest>(d))),
+    (error) => {
+      console.error('Maintenance subscription error:', error);
+      callback([]);
+      onError?.(error);
+    },
   );
 }
 
@@ -367,6 +374,24 @@ export async function requestAdditionalInfo(
   });
 }
 
+async function syncMaintenanceBilling(requestId: string): Promise<void> {
+  const snap = await getDoc(doc(db, COLLECTIONS.maintenanceRequests, requestId));
+  if (!snap.exists()) return;
+  const request = docToData<MaintenanceRequest>(snap as never);
+  const total = computeTotalCost(request);
+  if (total <= 0) return;
+  if (request.paymentStatus === 'paid' || request.paymentStatus === 'waived') return;
+
+  const invoiceId = await ensureMaintenanceChargeInvoice(request);
+  if (invoiceId && invoiceId !== request.linkedInvoiceId) {
+    await updateDoc(doc(db, COLLECTIONS.maintenanceRequests, requestId), {
+      linkedInvoiceId: invoiceId,
+      paymentStatus: request.paymentStatus ?? 'unpaid',
+      updatedAt: toTimestamp(),
+    });
+  }
+}
+
 export async function updateMaintenanceCosts(
   requestId: string,
   costs: MaintenanceCostBreakdown,
@@ -389,6 +414,8 @@ export async function updateMaintenanceCosts(
     author: author ?? 'Admin',
     authorRole: 'admin',
   });
+
+  await syncMaintenanceBilling(requestId);
 }
 
 export async function addMaintenanceAttachment(
@@ -457,6 +484,8 @@ export async function completeMaintenanceRequest(
       authorRole: 'admin',
     });
   }
+
+  await syncMaintenanceBilling(requestId);
 }
 
 export async function closeMaintenanceRequest(
@@ -623,4 +652,76 @@ export function getResolutionDays(request: MaintenanceRequest): number | null {
 
 export function getRequestTotalCost(request: MaintenanceRequest): number {
   return computeTotalCost(request);
+}
+
+export async function tenantAddComment(
+  requestId: string,
+  message: string,
+  tenantName: string,
+): Promise<void> {
+  await addMaintenanceNote(requestId, message, tenantName, 'tenant', 'note');
+}
+
+export async function tenantConfirmCompletion(
+  requestId: string,
+  tenantName: string,
+): Promise<void> {
+  const today = new Date().toISOString().split('T')[0];
+  await updateMaintenanceRequest(
+    requestId,
+    { status: 'closed', closedDate: today, tenantConfirmedAt: today },
+    {
+      author: tenantName,
+      authorRole: 'tenant',
+      updateType: 'status_change',
+      updateMessage: 'Tenant confirmed repair completed successfully',
+    },
+  );
+}
+
+export async function tenantReopenRequest(
+  requestId: string,
+  reason: string,
+  tenantName: string,
+): Promise<void> {
+  const request = await getRequestOrThrow(requestId);
+  await updateMaintenanceRequest(
+    requestId,
+    {
+      status: 'requested',
+      assignedTo: null,
+      technicianId: null,
+      assignedDate: null,
+      scheduledDate: null,
+      scheduledTime: null,
+      completedDate: null,
+      closedDate: null,
+      tenantConfirmedAt: null,
+    },
+    { skipAutoUpdate: true },
+  );
+
+  await addMaintenanceUpdate(requestId, {
+    message: reason.trim() || 'Tenant reopened — issue persists',
+    status: 'requested',
+    type: 'status_change',
+    author: tenantName,
+    authorRole: 'tenant',
+  });
+
+  try {
+    const admins = await listAdminUsers();
+    await Promise.all(
+      admins.map((admin) =>
+        notifyUser(admin.id, {
+          title: 'Maintenance request reopened',
+          body: `${tenantName} reopened "${request.issue as string}". ${reason.trim() || 'Issue persists.'}`,
+          type: 'maintenance',
+          subject: 'Maintenance reopened',
+        }),
+      ),
+    );
+  } catch {
+    // non-blocking
+  }
 }

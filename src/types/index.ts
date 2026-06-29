@@ -247,6 +247,14 @@ export interface InvoiceDeliveryRecord {
   regenerated?: boolean;
 }
 
+export type InvoiceType = 'rent' | 'maintenance' | 'other';
+
+export interface InvoiceLineItem {
+  label: string;
+  amount: number;
+  maintenanceRequestId?: string;
+}
+
 export interface Invoice {
   id: string;
   invoiceNumber: string;
@@ -266,6 +274,9 @@ export interface Invoice {
   billingPeriodStart?: string;
   billingPeriodEnd?: string;
   notes?: string;
+  invoiceType?: InvoiceType;
+  maintenanceRequestId?: string;
+  lineItems?: InvoiceLineItem[];
   paymentLinkUrl?: string;
   pdfFile?: InvoiceDocumentFile;
   emailStatus?: InvoiceEmailStatus;
@@ -275,19 +286,60 @@ export interface Invoice {
   updatedAt: FirestoreTimestamp;
 }
 
-export type PaymentRecordStatus = 'completed' | 'failed' | 'pending';
-export type PaymentGateway = 'demo' | 'stripe' | 'paymongo';
+export type ManualPaymentMethod = 'qrph' | 'gcash' | 'maya';
+export type PaymentVerificationStatus = 'pending_verification' | 'approved' | 'rejected';
+export type PaymentRecordStatus =
+  | 'completed'
+  | 'failed'
+  | 'pending'
+  | 'pending_verification';
+
+export interface PaymentReceiptFile {
+  fileName: string;
+  downloadUrl?: string;
+  inlineData?: string;
+  contentType?: string;
+}
 
 export interface PaymentRecord {
   id: string;
   tenantId: string;
+  tenantName?: string;
   invoiceId: string;
+  invoiceNumber?: string;
+  billingPeriodStart?: string;
+  billingPeriodEnd?: string;
+  amountDue?: number;
   amount: number;
   method: string;
+  referenceNumber?: string;
+  paymentDate?: string;
+  receiptFile?: PaymentReceiptFile;
+  verificationStatus?: PaymentVerificationStatus;
+  remarks?: string;
+  verifiedAt?: string;
+  verifiedBy?: string;
   status: PaymentRecordStatus;
-  gateway: PaymentGateway;
+  gateway?: 'manual';
   monthLabel?: string;
   createdAt: FirestoreTimestamp;
+}
+
+export type PaymentInstructionMethod = ManualPaymentMethod;
+
+export interface PaymentInstructionEntry {
+  accountName: string;
+  accountNumber: string;
+  instructions: string;
+  qrImageUrl?: string;
+  qrInlineData?: string;
+}
+
+export interface PaymentInstructionsSettings {
+  qrph: PaymentInstructionEntry;
+  gcash: PaymentInstructionEntry;
+  maya: PaymentInstructionEntry;
+  updatedAt?: string;
 }
 
 export type MaintenancePriority = 'low' | 'medium' | 'high' | 'emergency';
@@ -381,10 +433,14 @@ export interface MaintenanceRequest {
   materialsUsed?: string;
   paymentStatus?: MaintenancePaymentStatus;
   invoiceUrl?: string;
+  linkedInvoiceId?: string;
   adminNotes?: string;
   internalNotes?: string;
   photoUrls?: string[];
   attachments?: MaintenanceAttachment[];
+  preferredScheduleDate?: string | null;
+  preferredScheduleTime?: string | null;
+  tenantConfirmedAt?: string | null;
   createdAt: FirestoreTimestamp;
   updatedAt: FirestoreTimestamp;
 }

@@ -11,7 +11,8 @@ import { DollarSign, FileText, Wrench, Calendar, Home, CreditCard, AlertCircle, 
 import { useAuth } from '../../contexts/AuthContext';
 import { PageLoader } from '../common/LoadingSpinner';
 import { getActiveLeaseByTenant } from '../../../services/leases.service';
-import { listInvoicesByTenant, syncOverdueInvoices } from '../../../services/invoices.service';
+import { listInvoicesByTenant, isInvoicePayable } from '../../../services/invoices.service';
+import { getInvoiceTotalDue } from '../../../lib/payment-utils';
 import { subscribeMaintenanceByTenant } from '../../../services/maintenance.service';
 import { listNoticesForProperty } from '../../../services/notices.service';
 import type { Invoice, Lease, MaintenanceRequest, Notice } from '../../../types';
@@ -32,17 +33,18 @@ export const TenantHome = () => {
       return;
     }
     Promise.all([
-      syncOverdueInvoices(),
       getActiveLeaseByTenant(tenant.id),
       listInvoicesByTenant(tenant.id),
       listNoticesForProperty(tenant.propertyId),
-    ]).then(([, l, invoices, notices]) => {
-      setLease(l);
-      const pending = invoices.find((i) => i.status === 'pending' || i.status === 'overdue');
-      setNextInvoice(pending ?? invoices[0] ?? null);
-      setNotice(notices[0] ?? null);
-      setLoading(false);
-    });
+    ])
+      .then(([l, invoices, notices]) => {
+        setLease(l);
+        const pending = invoices.find((i) => isInvoicePayable(i));
+        setNextInvoice(pending ?? invoices[0] ?? null);
+        setNotice(notices[0] ?? null);
+      })
+      .catch((err) => console.error('Failed to load tenant home:', err))
+      .finally(() => setLoading(false));
 
     const unsub = subscribeMaintenanceByTenant(tenant.id, (reqs) => {
       setMaintenance(reqs.filter((r) => r.status !== 'completed').slice(0, 2));
@@ -72,7 +74,7 @@ export const TenantHome = () => {
         <div className="relative">
           <p className="text-primary-foreground/80 text-sm mb-1">Current Rent Due</p>
           <h2 className="text-4xl lg:text-5xl font-bold mb-2">
-            {nextInvoice ? formatCurrency(nextInvoice.amount) : formatCurrency(tenant.rent)}
+            {nextInvoice ? formatCurrency(getInvoiceTotalDue(nextInvoice)) : formatCurrency(tenant.rent)}
           </h2>
           <div className="flex items-center gap-2 text-sm">
             <Calendar className="w-4 h-4" />

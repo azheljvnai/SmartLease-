@@ -196,3 +196,26 @@ export function isOpenMaintenanceStatus(status: MaintenanceStatus | string): boo
   const normalized = normalizeMaintenanceStatus(status);
   return normalized !== 'completed' && normalized !== 'closed';
 }
+
+/** Simplified tenant-facing progress stages */
+export const TENANT_PROGRESS_STAGES = [
+  { key: 'requested', label: 'Submitted' },
+  { key: 'under_review', label: 'Under Review' },
+  { key: 'assigned', label: 'Assigned' },
+  { key: 'scheduled', label: 'Scheduled' },
+  { key: 'in_progress', label: 'In Progress' },
+  { key: 'completed', label: 'Completed' },
+  { key: 'closed', label: 'Closed' },
+] as const;
+
+export function getTenantProgressIndex(status: MaintenanceStatus | string): number {
+  const normalized = normalizeMaintenanceStatus(status);
+  if (normalized === 'waiting_parts') return 4;
+  const idx = TENANT_PROGRESS_STAGES.findIndex((s) => s.key === normalized);
+  return idx === -1 ? 0 : idx;
+}
+
+export function isCompletedMaintenanceStatus(status: MaintenanceStatus | string): boolean {
+  const normalized = normalizeMaintenanceStatus(status);
+  return normalized === 'completed' || normalized === 'closed';
+}

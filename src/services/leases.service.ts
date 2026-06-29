@@ -227,27 +227,20 @@ export async function getActiveLeaseByTenant(tenantId: string): Promise<Lease | 
 
 
 export async function getCurrentLeaseByTenant(tenantId: string): Promise<Lease | null> {
+  const leases = await listLeasesByTenant(tenantId);
+  if (leases.length === 0) return null;
 
-  const snap = await getDocs(
-
-    query(col, where('tenantId', '==', tenantId), orderBy('createdAt', 'desc')),
-
-  );
-
-  if (snap.empty) return null;
-
-  const leases = snap.docs.map((d) => docToData<Lease>(d));
+  const sorted = [...leases].sort((a, b) => {
+    const aMs = new Date(serializeTimestamp(a.createdAt)).getTime();
+    const bMs = new Date(serializeTimestamp(b.createdAt)).getTime();
+    return bMs - aMs;
+  });
 
   return (
-
-    leases.find((l) => l.status === 'active') ??
-
-    leases.find((l) => l.documentStatus !== 'active_lease') ??
-
-    leases[0]
-
+    sorted.find((l) => l.status === 'active') ??
+    sorted.find((l) => l.documentStatus !== 'active_lease') ??
+    sorted[0]
   );
-
 }
 
 

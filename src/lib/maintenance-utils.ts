@@ -116,3 +116,94 @@ export function countOpenByTechnician(
     (r) => r.technicianId === technicianId && isOpenMaintenanceStatus(r.status),
   ).length;
 }
+
+export type TenantMaintenanceSortBy =
+  | 'newest'
+  | 'oldest'
+  | 'priority'
+  | 'updated'
+  | 'scheduled';
+
+const PRIORITY_ORDER: Record<string, number> = {
+  emergency: 0,
+  high: 1,
+  medium: 2,
+  low: 3,
+};
+
+export interface TenantMaintenanceFilterState {
+  search: string;
+  status: string;
+  priority: string;
+  category: string;
+  dateFrom: string;
+  dateTo: string;
+  sortBy: TenantMaintenanceSortBy;
+}
+
+export const DEFAULT_TENANT_MAINTENANCE_FILTERS: TenantMaintenanceFilterState = {
+  search: '',
+  status: 'all',
+  priority: 'all',
+  category: 'all',
+  dateFrom: '',
+  dateTo: '',
+  sortBy: 'newest',
+};
+
+export function filterTenantMaintenanceRequests(
+  requests: MaintenanceRequest[],
+  filters: TenantMaintenanceFilterState,
+): MaintenanceRequest[] {
+  const q = filters.search.toLowerCase().trim();
+
+  return requests.filter((r) => {
+    const normalized = normalizeMaintenanceStatus(r.status);
+
+    if (q) {
+      const haystack = [r.issue, r.category, r.assignedTo, r.description, formatRequestId(r)]
+        .filter(Boolean)
+        .join(' ')
+        .toLowerCase();
+      if (!haystack.includes(q)) return false;
+    }
+    if (filters.status !== 'all' && normalized !== filters.status && r.status !== filters.status) {
+      return false;
+    }
+    if (filters.priority !== 'all' && r.priority !== filters.priority) return false;
+    if (filters.category !== 'all' && r.category !== filters.category) return false;
+    if (filters.dateFrom && r.submitted < filters.dateFrom) return false;
+    if (filters.dateTo && r.submitted > filters.dateTo) return false;
+    return true;
+  });
+}
+
+export function sortTenantMaintenanceRequests(
+  requests: MaintenanceRequest[],
+  sortBy: TenantMaintenanceSortBy,
+): MaintenanceRequest[] {
+  const sorted = [...requests];
+  switch (sortBy) {
+    case 'oldest':
+      return sorted.sort((a, b) => a.submitted.localeCompare(b.submitted));
+    case 'priority':
+      return sorted.sort(
+        (a, b) =>
+          (PRIORITY_ORDER[a.priority] ?? 9) - (PRIORITY_ORDER[b.priority] ?? 9) ||
+          b.submitted.localeCompare(a.submitted),
+      );
+    case 'updated':
+      return sorted.sort((a, b) =>
+        getUpdatedAtIso(b).localeCompare(getUpdatedAtIso(a)),
+      );
+    case 'scheduled':
+      return sorted.sort((a, b) => {
+        const aDate = a.scheduledDate ?? '9999';
+        const bDate = b.scheduledDate ?? '9999';
+        return aDate.localeCompare(bDate);
+      });
+    case 'newest':
+    default:
+      return sorted.sort((a, b) => b.submitted.localeCompare(a.submitted));
+  }
+}

@@ -19,9 +19,15 @@ export const TenantLease = () => {
 
   const loadLease = async () => {
     if (!tenant) return;
-    const l = await getCurrentLeaseByTenant(tenant.id);
-    setLease(l);
-    setLoading(false);
+    try {
+      const l = await getCurrentLeaseByTenant(tenant.id);
+      setLease(l);
+    } catch (err) {
+      console.error('Failed to load lease:', err);
+      setLease(null);
+    } finally {
+      setLoading(false);
+    }
   };
 
   useEffect(() => {

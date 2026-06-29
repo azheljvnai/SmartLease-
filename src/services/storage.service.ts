@@ -222,3 +222,86 @@ function blobToBase64(blob: Blob): Promise<string> {
     reader.readAsDataURL(blob);
   });
 }
+
+const MAX_RECEIPT_BYTES = 2_000_000;
+const MAX_QR_BYTES = 1_000_000;
+
+const RECEIPT_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'application/pdf'];
+
+export function paymentReceiptPath(paymentId: string, fileName: string): string {
+  return `payments/${paymentId}/${fileName}`;
+}
+
+export function paymentQrPath(method: string): string {
+  return `settings/payment-qr/${method}`;
+}
+
+async function storeFileBlob(
+  path: string,
+  blob: Blob,
+  contentType: string,
+  maxInlineBytes: number,
+): Promise<{ storagePath: string; downloadUrl: string; inlineData?: string; contentType: string; fileName: string }> {
+  const fileName = path.split('/').pop() ?? 'file';
+
+  if (isFirebaseStorageEnabled()) {
+    try {
+      const storageRef = ref(getFirebaseStorage(), path);
+      await uploadBytes(storageRef, blob, { contentType });
+      const downloadUrl = await getDownloadURL(storageRef);
+      return { storagePath: path, downloadUrl, contentType, fileName };
+    } catch (err) {
+      console.warn('Firebase Storage upload failed; using inline storage.', err);
+    }
+  }
+
+  if (blob.size > maxInlineBytes) {
+    throw new Error(
+      `File is too large (${Math.round(blob.size / 1024)}KB). Enable Firebase Storage or use a smaller file.`,
+    );
+  }
+
+  const inlineData = await blobToBase64(blob);
+  return { storagePath: path, downloadUrl: '', inlineData, contentType, fileName };
+}
+
+export async function uploadPaymentReceipt(
+  paymentId: string,
+  file: File,
+): Promise<{ fileName: string; downloadUrl?: string; inlineData?: string; contentType: string }> {
+  if (!RECEIPT_TYPES.includes(file.type)) {
+    throw new Error('Receipt must be a JPEG, PNG, WebP image, or PDF.');
+  }
+  if (file.size > MAX_RECEIPT_BYTES) {
+    throw new Error('Receipt must be under 2MB.');
+  }
+
+  const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, '_');
+  const path = paymentReceiptPath(paymentId, safeName);
+  const blob = new Blob([await file.arrayBuffer()], { type: file.type });
+  const result = await storeFileBlob(path, blob, file.type, MAX_RECEIPT_BYTES);
+  return {
+    fileName: safeName,
+    downloadUrl: result.downloadUrl || undefined,
+    inlineData: result.inlineData,
+    contentType: file.type,
+  };
+}
+
+export async function uploadPaymentQrImage(
+  method: string,
+  file: File,
+): Promise<{ downloadUrl: string; inlineData?: string }> {
+  if (!file.type.startsWith('image/')) {
+    throw new Error('QR code must be an image file.');
+  }
+  if (file.size > MAX_QR_BYTES) {
+    throw new Error('QR image must be under 1MB.');
+  }
+
+  const ext = file.name.split('.').pop() ?? 'png';
+  const path = `${paymentQrPath(method)}.${ext}`;
+  const blob = new Blob([await file.arrayBuffer()], { type: file.type });
+  const result = await storeFileBlob(path, blob, file.type, MAX_QR_BYTES);
+  return { downloadUrl: result.downloadUrl, inlineData: result.inlineData };
+}

@@ -8,8 +8,6 @@ import {
 
   onSnapshot,
 
-  orderBy,
-
   query,
 
   updateDoc,
@@ -24,7 +22,7 @@ import { COLLECTIONS } from '../firebase/config';
 
 import type { AppNotification, NotificationType } from '../types';
 
-import { docToData, serverTimestamps } from '../lib/firestore';
+import { docToData, serializeTimestamp, serverTimestamps } from '../lib/firestore';
 
 import { getTenant } from './tenants.service';
 
@@ -121,21 +119,25 @@ export async function notifyUser(
 
 
 export function subscribeNotifications(
-
   userId: string,
-
   callback: (notifications: AppNotification[]) => void,
-
 ): () => void {
-
   return onSnapshot(
-
-    query(col, where('userId', '==', userId), orderBy('createdAt', 'desc')),
-
-    (snap) => callback(snap.docs.map((d) => docToData<AppNotification>(d))),
-
+    query(col, where('userId', '==', userId)),
+    (snap) => {
+      const notifications = snap.docs.map((d) => docToData<AppNotification>(d));
+      notifications.sort((a, b) => {
+        const aMs = new Date(serializeTimestamp(a.createdAt)).getTime();
+        const bMs = new Date(serializeTimestamp(b.createdAt)).getTime();
+        return bMs - aMs;
+      });
+      callback(notifications);
+    },
+    (error) => {
+      console.error('Notifications subscription error:', error);
+      callback([]);
+    },
   );
-
 }
 
 

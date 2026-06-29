@@ -34,6 +34,10 @@ import {
 
   X,
 
+  QrCode,
+
+  ClipboardCheck,
+
 } from 'lucide-react';
 
 import { PageLoader } from '../common/LoadingSpinner';
@@ -74,8 +78,13 @@ import {
 } from '../../../lib/form-validation';
 import { FormSelect } from '../ui/form-select';
 import { Textarea } from '../ui/textarea';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '../ui/tabs';
 
 import { isEmailConfigured } from '../../../services/email.service';
+import { PaymentInstructionsSettings } from './PaymentInstructionsSettings';
+import { PaymentVerifications } from './PaymentVerifications';
+
+type BillingTab = 'invoices' | 'verifications' | 'instructions';
 
 
 
@@ -166,6 +175,7 @@ export const BillingPayments = () => {
   });
 
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
+  const [activeTab, setActiveTab] = useState<BillingTab>('invoices');
 
 
 
@@ -609,21 +619,51 @@ export const BillingPayments = () => {
 
         <div className="flex gap-2 flex-wrap">
 
-          <Button variant="primary" onClick={() => setShowForm(true)}>
+          {activeTab === 'invoices' && (
+            <Button variant="primary" onClick={() => setShowForm(true)}>
 
-            <Plus className="w-4 h-4 mr-2" />New Invoice
+              <Plus className="w-4 h-4 mr-2" />New Invoice
 
-          </Button>
+            </Button>
+          )}
 
+          {activeTab === 'invoices' && (
           <Button variant="outline" onClick={exportCsv}>
 
             <Download className="w-4 h-4 mr-2" />Export CSV
 
           </Button>
+          )}
 
         </div>
 
       </div>
+
+      <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as BillingTab)} className="space-y-4">
+        <TabsList className="flex-wrap h-auto w-full sm:w-auto">
+          <TabsTrigger value="invoices" className="gap-1.5">
+            <FileText className="w-4 h-4" />
+            Invoices
+          </TabsTrigger>
+          <TabsTrigger value="verifications" className="gap-1.5">
+            <ClipboardCheck className="w-4 h-4" />
+            Verifications
+          </TabsTrigger>
+          <TabsTrigger value="instructions" className="gap-1.5">
+            <QrCode className="w-4 h-4" />
+            Payment QR Codes
+          </TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="verifications" className="mt-0">
+          <PaymentVerifications />
+        </TabsContent>
+
+        <TabsContent value="instructions" className="mt-0">
+          <PaymentInstructionsSettings />
+        </TabsContent>
+
+        <TabsContent value="invoices" className="mt-0 space-y-4 lg:space-y-6">
 
 
 
@@ -1289,6 +1329,9 @@ export const BillingPayments = () => {
         </div>
 
       )}
+
+        </TabsContent>
+      </Tabs>
 
     </div>
 

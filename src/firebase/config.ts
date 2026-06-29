@@ -48,4 +48,5 @@ export const COLLECTIONS = {
   technicians: 'technicians',
   paymentMethods: 'paymentMethods',
   notifications: 'notifications',
+  settings: 'settings',
 } as const;

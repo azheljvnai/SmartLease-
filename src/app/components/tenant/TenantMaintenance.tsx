@@ -1,228 +1,277 @@
-import { useEffect, useState } from 'react';
-import { toast } from 'sonner';
-import { Card } from '../ui/card';
-import { Button } from '../ui/button';
-import { Badge } from '../ui/badge';
-import { Input } from '../ui/input';
-import { Plus, X } from 'lucide-react';
+import { useEffect, useMemo, useState } from 'react';
+import { ClipboardList, History, Plus, Wrench } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import { PageLoader } from '../common/LoadingSpinner';
+import { EmptyState } from '../common/EmptyState';
+import { Card } from '../ui/card';
+import { Button } from '../ui/button';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '../ui/tabs';
+import { Sheet, SheetContent } from '../ui/sheet';
+import { TenantMaintenanceRequestCard } from './maintenance/TenantMaintenanceRequestCard';
+import { TenantMaintenanceFilters } from './maintenance/TenantMaintenanceFilters';
+import { TenantMaintenanceDetail } from './maintenance/TenantMaintenanceDetail';
+import { TenantMaintenanceHistory } from './maintenance/TenantMaintenanceHistory';
+import { TenantNewRequestDialog } from './maintenance/TenantNewRequestDialog';
 import {
   subscribeMaintenanceByTenant,
-  createMaintenanceRequest,
   listMaintenanceUpdates,
-  updateMaintenanceRequest,
 } from '../../../services/maintenance.service';
-import { fileToDataUrl } from '../../../lib/file-upload';
-import type { MaintenancePriority, MaintenanceRequest, MaintenanceUpdate } from '../../../types';
+import type { MaintenanceRequest, MaintenanceUpdate } from '../../../types';
 import {
-  maintenanceStatusLabel,
-  maintenancePriorityLabel,
-  maintenancePriorityVariant,
-  maintenanceStatusVariant,
-  normalizeMaintenanceStatus,
-} from '../../../lib/maintenance-labels';
-import {
-  clearFieldError,
-  focusFirstFieldError,
-  validateFormFields,
-} from '../../../lib/form-validation';
-import { FormSelect } from '../ui/form-select';
-import { Textarea } from '../ui/textarea';
+  DEFAULT_TENANT_MAINTENANCE_FILTERS,
+  filterTenantMaintenanceRequests,
+  sortTenantMaintenanceRequests,
+} from '../../../lib/maintenance-utils';
+import { isCompletedMaintenanceStatus, isOpenMaintenanceStatus } from '../../../lib/maintenance-labels';
 
 export const TenantMaintenance = () => {
   const { tenant } = useAuth();
   const [requests, setRequests] = useState<MaintenanceRequest[]>([]);
-  const [updatesMap, setUpdatesMap] = useState<Record<string, MaintenanceUpdate[]>>({});
   const [loading, setLoading] = useState(true);
-  const [showModal, setShowModal] = useState(false);
-  const [submitting, setSubmitting] = useState(false);
-  const [photoFile, setPhotoFile] = useState<File | null>(null);
-  const [newRequest, setNewRequest] = useState({
-    issue: '',
-    category: 'General',
-    description: '',
-    priority: 'medium' as MaintenancePriority,
-  });
-  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
+  const [selected, setSelected] = useState<MaintenanceRequest | null>(null);
+  const [updates, setUpdates] = useState<MaintenanceUpdate[]>([]);
+  const [updatesLoading, setUpdatesLoading] = useState(false);
+  const [showNewRequest, setShowNewRequest] = useState(false);
+  const [showAdvancedFilters, setShowAdvancedFilters] = useState(false);
+  const [mobileDetailOpen, setMobileDetailOpen] = useState(false);
+  const [filters, setFilters] = useState(DEFAULT_TENANT_MAINTENANCE_FILTERS);
+  const [activeTab, setActiveTab] = useState('active');
 
   useEffect(() => {
     if (!tenant) {
       setLoading(false);
       return;
     }
-    const unsub = subscribeMaintenanceByTenant(tenant.id, async (reqs) => {
-      setRequests(reqs);
-      const map: Record<string, MaintenanceUpdate[]> = {};
-      await Promise.all(
-        reqs.map(async (r) => {
-          map[r.id] = await listMaintenanceUpdates(r.id);
-        }),
-      );
-      setUpdatesMap(map);
-      setLoading(false);
-    });
+    const unsub = subscribeMaintenanceByTenant(
+      tenant.id,
+      (reqs) => {
+        setRequests(reqs);
+        setLoading(false);
+      },
+      () => setLoading(false),
+    );
     return unsub;
   }, [tenant]);
 
-  const getStatusBadge = (status: string) => {
-    const normalized = normalizeMaintenanceStatus(status as never);
-    return (
-      <Badge variant={maintenanceStatusVariant(normalized)}>
-        {maintenanceStatusLabel(status as never)}
-      </Badge>
-    );
-  };
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!tenant) return;
-    const result = validateFormFields({
-      issue: { value: newRequest.issue, label: 'Issue summary', required: true },
-    });
-    if (!result.valid) {
-      setFieldErrors(result.errors);
-      focusFirstFieldError(result.errors);
-      toast.error(result.message ?? 'Please fix the highlighted fields');
+  useEffect(() => {
+    if (!selected) {
+      setUpdates([]);
       return;
     }
-    setFieldErrors({});
-    setSubmitting(true);
-    try {
-      const requestId = await createMaintenanceRequest({
-        tenantId: tenant.id,
-        tenantName: tenant.name,
-        unitId: tenant.unitId,
-        unitLabel: tenant.unitLabel,
-        propertyId: tenant.propertyId,
-        issue: newRequest.issue,
-        description: newRequest.description,
-        category: newRequest.category,
-        priority: newRequest.priority,
-        status: 'requested',
-        submitted: new Date().toISOString().split('T')[0],
-        assignedTo: null,
-        propertyName: tenant.propertyName,
-      });
+    const updated = requests.find((r) => r.id === selected.id);
+    if (updated) setSelected(updated);
 
-      if (photoFile) {
-        const dataUrl = await fileToDataUrl(photoFile);
-        await updateMaintenanceRequest(requestId, { photoUrls: [dataUrl] });
-      }
+    setUpdatesLoading(true);
+    listMaintenanceUpdates(selected.id)
+      .then(setUpdates)
+      .catch(() => setUpdates([]))
+      .finally(() => setUpdatesLoading(false));
+  }, [selected?.id, requests]);
 
-      toast.success('Request submitted');
-      setShowModal(false);
-      setNewRequest({ issue: '', category: 'General', description: '', priority: 'medium' });
-      setPhotoFile(null);
-    } catch {
-      toast.error('Failed to submit request');
-    } finally {
-      setSubmitting(false);
-    }
+  const activeRequests = useMemo(
+    () => requests.filter((r) => isOpenMaintenanceStatus(r.status)),
+    [requests],
+  );
+
+  const filteredActive = useMemo(() => {
+    const filtered = filterTenantMaintenanceRequests(activeRequests, filters);
+    return sortTenantMaintenanceRequests(filtered, filters.sortBy);
+  }, [activeRequests, filters]);
+
+  const openCount = activeRequests.length;
+  const completedCount = requests.filter((r) => isCompletedMaintenanceStatus(r.status)).length;
+
+  const handleSelect = (request: MaintenanceRequest) => {
+    setSelected(request);
+    if (window.innerWidth < 1024) setMobileDetailOpen(true);
+  };
+
+  const refreshUpdates = () => {
+    if (!selected) return;
+    listMaintenanceUpdates(selected.id).then(setUpdates);
   };
 
   if (loading) return <PageLoader />;
-  if (!tenant) return <Card><p>No tenant profile linked.</p></Card>;
+  if (!tenant) {
+    return (
+      <Card className="p-6">
+        <p className="text-muted-foreground">No tenant profile linked.</p>
+      </Card>
+    );
+  }
+
+  const tenantName = tenant.name;
 
   return (
     <div className="space-y-4">
-      <div className="flex justify-between items-center">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-semibold">Maintenance</h1>
-          <p className="text-sm text-muted-foreground">Submit and track service requests</p>
+          <h1 className="text-2xl lg:text-3xl font-semibold text-foreground">Maintenance</h1>
+          <p className="text-sm text-muted-foreground">
+            Submit requests, track repairs, and view history
+          </p>
         </div>
-        <Button variant="primary" onClick={() => setShowModal(true)}><Plus className="w-4 h-4 mr-2" />New Request</Button>
+        <Button variant="primary" onClick={() => setShowNewRequest(true)}>
+          <Plus className="w-4 h-4 mr-2" />
+          New Request
+        </Button>
       </div>
 
-      {requests.map((req) => (
-        <Card key={req.id}>
-          <div className="flex justify-between mb-2">
-            <div>
-              <h3 className="font-semibold">{req.issue}</h3>
-              <div className="flex gap-2 mt-1">
-                <Badge variant={maintenancePriorityVariant(req.priority)}>{maintenancePriorityLabel(req.priority)}</Badge>
-              </div>
-            </div>
-            {getStatusBadge(req.status)}
+      <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+        <Card className="p-3 flex items-center gap-3">
+          <div className="w-10 h-10 rounded-xl bg-amber-500/10 flex items-center justify-center shrink-0">
+            <Wrench className="w-5 h-5 text-amber-600" />
           </div>
-          <p className="text-sm text-muted-foreground">{req.category} · {req.submitted}</p>
-          {req.assignedTo && (
-            <p className="text-sm text-primary mt-1">Assigned to: {req.assignedTo}</p>
-          )}
-          {req.description && <p className="text-sm mt-2 text-muted-foreground">{req.description}</p>}
-          {updatesMap[req.id]?.map((u) => (
-            <div key={u.id} className="mt-3 pl-4 border-l-2 border-primary/30 text-sm">
-              <p className="text-muted-foreground">{u.date}</p>
-              <p>{u.message}</p>
-            </div>
-          ))}
+          <div>
+            <p className="text-xl font-bold">{openCount}</p>
+            <p className="text-xs text-muted-foreground">Active requests</p>
+          </div>
         </Card>
-      ))}
+        <Card className="p-3 flex items-center gap-3">
+          <div className="w-10 h-10 rounded-xl bg-emerald-500/10 flex items-center justify-center shrink-0">
+            <ClipboardList className="w-5 h-5 text-emerald-600" />
+          </div>
+          <div>
+            <p className="text-xl font-bold">{completedCount}</p>
+            <p className="text-xs text-muted-foreground">Completed</p>
+          </div>
+        </Card>
+        <Card className="p-3 flex items-center gap-3 col-span-2 sm:col-span-1">
+          <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center shrink-0">
+            <History className="w-5 h-5 text-primary" />
+          </div>
+          <div>
+            <p className="text-xl font-bold">{requests.length}</p>
+            <p className="text-xs text-muted-foreground">Total requests</p>
+          </div>
+        </Card>
+      </div>
 
-      {showModal && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <Card className="w-full max-w-lg">
-            <div className="flex justify-between mb-4">
-              <h3 className="font-semibold">New Maintenance Request</h3>
-              <button type="button" onClick={() => setShowModal(false)}><X /></button>
+      <Tabs value={activeTab} onValueChange={setActiveTab}>
+        <TabsList>
+          <TabsTrigger value="active" className="gap-1.5">
+            <Wrench className="w-4 h-4" />
+            Active
+            {openCount > 0 && (
+              <span className="ml-1 rounded-full bg-primary/20 text-primary text-xs px-1.5 py-0.5 font-medium">
+                {openCount}
+              </span>
+            )}
+          </TabsTrigger>
+          <TabsTrigger value="history" className="gap-1.5">
+            <History className="w-4 h-4" />
+            History
+          </TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="active" className="mt-4 space-y-4">
+          <TenantMaintenanceFilters
+            filters={filters}
+            onChange={setFilters}
+            resultCount={filteredActive.length}
+            showAdvanced={showAdvancedFilters}
+            onToggleAdvanced={() => setShowAdvancedFilters((v) => !v)}
+          />
+
+          <div className="grid lg:grid-cols-5 gap-4 min-h-[480px]">
+            <div className="lg:col-span-2 space-y-2 max-h-[calc(100vh-16rem)] overflow-y-auto pr-0.5">
+              {filteredActive.length === 0 ? (
+                <Card className="p-0 overflow-hidden">
+                  <EmptyState
+                    icon={Wrench}
+                    title={activeRequests.length === 0 ? 'No active requests' : 'No matching requests'}
+                    description={
+                      activeRequests.length === 0
+                        ? 'Submit a maintenance request when something needs attention in your unit.'
+                        : 'Try adjusting your search or filters.'
+                    }
+                    actionLabel={activeRequests.length === 0 ? 'New Request' : undefined}
+                    onAction={
+                      activeRequests.length === 0 ? () => setShowNewRequest(true) : undefined
+                    }
+                  />
+                </Card>
+              ) : (
+                filteredActive.map((request) => (
+                  <TenantMaintenanceRequestCard
+                    key={request.id}
+                    request={request}
+                    selected={selected?.id === request.id}
+                    onSelect={() => handleSelect(request)}
+                  />
+                ))
+              )}
             </div>
-            <form onSubmit={handleSubmit} className="space-y-4">
-              <Input
-                label="Issue Summary"
-                required
-                fieldKey="issue"
-                error={fieldErrors.issue}
-                value={newRequest.issue}
-                onChange={(e) => {
-                  setNewRequest({ ...newRequest, issue: e.target.value });
-                  setFieldErrors((p) => clearFieldError(p, 'issue'));
+
+            <div className="hidden lg:block lg:col-span-3">
+              {selected ? (
+                <TenantMaintenanceDetail
+                  request={selected}
+                  updates={updates}
+                  updatesLoading={updatesLoading}
+                  tenantName={tenantName}
+                  onRefreshUpdates={refreshUpdates}
+                />
+              ) : (
+                <Card className="h-full flex items-center justify-center p-8 text-center text-muted-foreground min-h-[480px]">
+                  <div>
+                    <Wrench className="w-12 h-12 mx-auto mb-3 opacity-30" />
+                    <p className="font-medium text-foreground mb-1">Select a request</p>
+                    <p className="text-sm">
+                      Choose a request to view progress, timeline, and messages
+                    </p>
+                  </div>
+                </Card>
+              )}
+            </div>
+          </div>
+        </TabsContent>
+
+        <TabsContent value="history" className="mt-4">
+          <div className="grid lg:grid-cols-5 gap-4">
+            <div className={selected && activeTab === 'history' ? 'lg:col-span-2' : 'lg:col-span-5'}>
+              <TenantMaintenanceHistory
+                requests={requests}
+                onSelectRequest={(request) => {
+                  setSelected(request);
+                  if (window.innerWidth < 1024) setMobileDetailOpen(true);
                 }}
               />
-              <FormSelect
-                label="Category"
-                fieldKey="category"
-                value={newRequest.category}
-                onChange={(e) => setNewRequest({ ...newRequest, category: e.target.value })}
-              >
-                <option>Plumbing</option><option>HVAC</option><option>Electrical</option><option>General</option>
-              </FormSelect>
-              <FormSelect
-                label="Priority"
-                fieldKey="priority"
-                value={newRequest.priority}
-                onChange={(e) => setNewRequest({ ...newRequest, priority: e.target.value as MaintenancePriority })}
-              >
-                <option value="low">Low</option>
-                <option value="medium">Medium</option>
-                <option value="high">High</option>
-                <option value="emergency">Emergency</option>
-              </FormSelect>
-              <Textarea
-                label="Description"
-                fieldKey="description"
-                placeholder="Detailed description..."
-                value={newRequest.description}
-                onChange={(e) => setNewRequest({ ...newRequest, description: e.target.value })}
-                rows={4}
-              />
-              <div>
-                <label className="text-sm font-medium text-foreground">Photo <span className="text-muted-foreground font-normal">(optional)</span></label>
-                <p className="text-xs text-muted-foreground mb-1">Spark plan: images stored in Firestore (max 500KB), not Firebase Storage.</p>
-                <input
-                  type="file"
-                  accept="image/*"
-                  className="w-full text-sm"
-                  onChange={(e) => setPhotoFile(e.target.files?.[0] ?? null)}
+            </div>
+            {selected && activeTab === 'history' && (
+              <div className="hidden lg:block lg:col-span-3">
+                <TenantMaintenanceDetail
+                  request={selected}
+                  updates={updates}
+                  updatesLoading={updatesLoading}
+                  tenantName={tenantName}
+                  onRefreshUpdates={refreshUpdates}
                 />
               </div>
-              <div className="flex gap-2">
-                <Button type="button" variant="outline" onClick={() => setShowModal(false)}>Cancel</Button>
-                <Button type="submit" variant="primary" loading={submitting}>Submit</Button>
-              </div>
-            </form>
-          </Card>
-        </div>
-      )}
+            )}
+          </div>
+        </TabsContent>
+      </Tabs>
+
+      <Sheet open={mobileDetailOpen} onOpenChange={setMobileDetailOpen}>
+        <SheetContent side="right" className="w-full sm:max-w-lg p-0 overflow-hidden">
+          {selected && (
+            <TenantMaintenanceDetail
+              request={selected}
+              updates={updates}
+              updatesLoading={updatesLoading}
+              tenantName={tenantName}
+              onRefreshUpdates={refreshUpdates}
+            />
+          )}
+        </SheetContent>
+      </Sheet>
+
+      <TenantNewRequestDialog
+        open={showNewRequest}
+        onOpenChange={setShowNewRequest}
+        tenant={tenant}
+      />
     </div>
   );
 };

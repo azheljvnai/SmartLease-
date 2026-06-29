@@ -28,7 +28,7 @@ import { db } from '../firebase/app';
 
 import { COLLECTIONS } from '../firebase/config';
 
-import type { Invoice, InvoiceDeliveryRecord, InvoiceEmailStatus } from '../types';
+import type { Invoice, InvoiceDeliveryRecord, InvoiceEmailStatus, MaintenanceRequest } from '../types';
 
 import { docToData, serverTimestamps, stripUndefined, toTimestamp } from '../lib/firestore';
 
@@ -47,6 +47,7 @@ import { sendEmail, isEmailConfigured } from './email.service';
 import { formatCurrency, formatDate } from '../lib/format';
 
 import { getCompanyBranding } from '../lib/company';
+import { computeTotalCost, formatRequestId } from '../lib/maintenance-utils';
 
 
 
@@ -98,6 +99,22 @@ export async function listInvoicesByTenant(tenantId: string): Promise<Invoice[]>
 
   return snap.docs.map((d) => docToData<Invoice>(d));
 
+}
+
+
+
+/** Treats past-due pending invoices as overdue without requiring a Firestore write. */
+export function effectiveInvoiceStatus(invoice: Invoice): Invoice['status'] {
+  if (invoice.status !== 'pending') return invoice.status;
+  const today = new Date().toISOString().split('T')[0];
+  return invoice.dueDate < today ? 'overdue' : 'pending';
+}
+
+
+
+export function isInvoicePayable(invoice: Invoice): boolean {
+  const status = effectiveInvoiceStatus(invoice);
+  return status === 'pending' || status === 'overdue';
 }
 
 
@@ -302,6 +319,71 @@ export function generateInvoiceNumber(): string {
 
   return `INV-${y}${m}-${r}`;
 
+}
+
+/** Creates or updates a billing invoice when maintenance has billable costs. */
+export async function ensureMaintenanceChargeInvoice(
+  request: MaintenanceRequest,
+): Promise<string | null> {
+  const total = computeTotalCost(request);
+  if (total <= 0) return null;
+  if (request.paymentStatus === 'paid' || request.paymentStatus === 'waived') return null;
+
+  const notes = `Maintenance charge for ${formatRequestId(request)}: ${request.issue}`;
+  const periodDate = request.completedDate ?? new Date().toISOString().split('T')[0];
+
+  if (request.linkedInvoiceId) {
+    const existing = await getInvoice(request.linkedInvoiceId);
+    if (existing && existing.status !== 'paid') {
+      if (existing.amount !== total) {
+        await updateInvoice(request.linkedInvoiceId, {
+          amount: total,
+          notes,
+          tenantId: request.tenantId,
+          lineItems: [
+            {
+              label: `Maintenance: ${request.issue} (${formatRequestId(request)})`,
+              amount: total,
+              maintenanceRequestId: request.id,
+            },
+          ],
+        });
+      }
+      return request.linkedInvoiceId;
+    }
+  }
+
+  const due = new Date();
+  due.setDate(due.getDate() + 14);
+
+  const invoiceId = await createInvoice({
+    invoiceNumber: generateInvoiceNumber(),
+    tenantId: request.tenantId,
+    tenantName: request.tenantName,
+    unitId: request.unitId,
+    unitLabel: request.unitLabel,
+    propertyId: request.propertyId,
+    propertyName: request.propertyName,
+    amount: total,
+    dueDate: due.toISOString().split('T')[0],
+    paidDate: null,
+    status: 'pending',
+    method: null,
+    invoiceType: 'maintenance',
+    maintenanceRequestId: request.id,
+    lineItems: [
+      {
+        label: `Maintenance: ${request.issue} (${formatRequestId(request)})`,
+        amount: total,
+        maintenanceRequestId: request.id,
+      },
+    ],
+    notes,
+    billingPeriodStart: periodDate,
+    billingPeriodEnd: periodDate,
+  });
+
+  return invoiceId;
 }
 
 
