@@ -194,11 +194,17 @@ export async function updateInvoice(id: string, data: Partial<Invoice>): Promise
 
   if (data.status && data.tenantId) {
 
-    const paymentStatus =
+    const tenant = await getTenant(data.tenantId);
 
-      data.status === 'paid' ? 'paid' : data.status === 'overdue' ? 'overdue' : 'pending';
+    if (tenant) {
 
-    await updateTenantPaymentStatus(data.tenantId, paymentStatus);
+      const paymentStatus =
+
+        data.status === 'paid' ? 'paid' : data.status === 'overdue' ? 'overdue' : 'pending';
+
+      await updateTenantPaymentStatus(data.tenantId, paymentStatus);
+
+    }
 
   }
 
@@ -230,7 +236,13 @@ export async function markInvoicePaid(
 
   });
 
-  await updateTenantPaymentStatus(tenantId, 'paid');
+  const tenant = await getTenant(tenantId);
+
+  if (tenant) {
+
+    await updateTenantPaymentStatus(tenantId, 'paid');
+
+  }
 
 
 

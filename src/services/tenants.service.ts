@@ -16,6 +16,7 @@ import { COLLECTIONS } from '../firebase/config';
 import type { PaymentStatus, Tenant, TenantStatus } from '../types';
 import { docToData, serverTimestamps, toTimestamp } from '../lib/firestore';
 import { assignUnit, releaseUnit } from './units.service';
+import { cascadeDeleteTenantData } from './tenant-cleanup.service';
 
 const col = collection(db, COLLECTIONS.tenants);
 
@@ -89,9 +90,14 @@ export async function updateTenant(id: string, data: Partial<Tenant>): Promise<v
 
 export async function deleteTenant(id: string): Promise<void> {
   const tenant = await getTenant(id);
-  if (tenant?.unitId) {
+  if (!tenant) return;
+
+  await cascadeDeleteTenantData(id, tenant.userId);
+
+  if (tenant.unitId) {
     await releaseUnit(tenant.unitId, tenant.propertyId);
   }
+
   await deleteDoc(doc(db, COLLECTIONS.tenants, id));
 }
 

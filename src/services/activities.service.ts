@@ -1,11 +1,14 @@
 import {
   addDoc,
   collection,
+  deleteDoc,
+  doc,
   getDocs,
   limit,
   onSnapshot,
   orderBy,
   query,
+  where,
 } from 'firebase/firestore';
 import { db } from '../firebase/app';
 import { COLLECTIONS } from '../firebase/config';
@@ -62,4 +65,13 @@ export async function createActivity(data: {
     time: 'just now',
     ...serverTimestamps(),
   });
+}
+
+export async function listActivitiesByTenant(tenantId: string): Promise<Activity[]> {
+  const snap = await getDocs(query(col, where('tenantId', '==', tenantId)));
+  return snap.docs.map((d) => docToData<Activity>(d));
+}
+
+export async function deleteActivity(id: string): Promise<void> {
+  await deleteDoc(doc(db, COLLECTIONS.activities, id));
 }

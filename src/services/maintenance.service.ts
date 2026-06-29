@@ -1,6 +1,7 @@
 import {
   addDoc,
   collection,
+  deleteDoc,
   doc,
   getDoc,
   getDocs,
@@ -60,6 +61,13 @@ export async function listMaintenanceByTenant(tenantId: string): Promise<Mainten
     query(col, where('tenantId', '==', tenantId), orderBy('submitted', 'desc')),
   );
   return snap.docs.map((d) => docToData<MaintenanceRequest>(d));
+}
+
+export async function forceDeleteMaintenanceRequest(requestId: string): Promise<void> {
+  const updatesCol = collection(db, COLLECTIONS.maintenanceRequests, requestId, 'updates');
+  const updatesSnap = await getDocs(updatesCol);
+  await Promise.all(updatesSnap.docs.map((d) => deleteDoc(d.ref)));
+  await deleteDoc(doc(db, COLLECTIONS.maintenanceRequests, requestId));
 }
 
 export async function listMaintenanceByProperty(propertyId: string): Promise<MaintenanceRequest[]> {

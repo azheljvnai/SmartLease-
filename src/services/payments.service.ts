@@ -1,6 +1,8 @@
 import {
   addDoc,
   collection,
+  deleteDoc,
+  doc,
   getDocs,
   orderBy,
   query,
@@ -41,4 +43,8 @@ export async function createPayment(data: {
     ...serverTimestamps(),
   });
   return ref.id;
+}
+
+export async function deletePayment(id: string): Promise<void> {
+  await deleteDoc(doc(db, COLLECTIONS.payments, id));
 }

@@ -6,7 +6,7 @@ import {
   updatePassword,
   type User,
 } from 'firebase/auth';
-import { doc, getDoc, setDoc, updateDoc, collection, getDocs, query, where } from 'firebase/firestore';
+import { doc, getDoc, setDoc, updateDoc, collection, getDocs, query, where, deleteField } from 'firebase/firestore';
 import { auth, db } from '../firebase/app';
 import { COLLECTIONS } from '../firebase/config';
 import type { UserProfile, UserRole } from '../types';
@@ -89,6 +89,13 @@ export async function updateUserProfile(
 ): Promise<void> {
   await updateDoc(doc(db, COLLECTIONS.users, uid), {
     ...data,
+    updatedAt: toTimestamp(),
+  });
+}
+
+export async function unlinkTenantFromUser(uid: string): Promise<void> {
+  await updateDoc(doc(db, COLLECTIONS.users, uid), {
+    tenantId: deleteField(),
     updatedAt: toTimestamp(),
   });
 }

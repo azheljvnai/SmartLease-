@@ -176,6 +176,16 @@ export async function listLeases(): Promise<Lease[]> {
 
 
 
+export async function listLeasesByTenant(tenantId: string): Promise<Lease[]> {
+
+  const snap = await getDocs(query(col, where('tenantId', '==', tenantId)));
+
+  return snap.docs.map((d) => docToData<Lease>(d));
+
+}
+
+
+
 export async function getLease(id: string): Promise<Lease | null> {
 
   const snap = await getDoc(doc(db, COLLECTIONS.leases, id));
@@ -933,6 +943,50 @@ export async function deleteLease(leaseId: string): Promise<void> {
     status: 'danger',
 
   });
+
+}
+
+
+
+export async function forceDeleteLease(leaseId: string, tenantId?: string): Promise<void> {
+
+  const lease = await getLease(leaseId);
+
+  if (!lease) return;
+
+
+
+  const historySnap = await getDocs(historyCol(leaseId));
+
+  await Promise.all(historySnap.docs.map((d) => deleteDoc(d.ref)));
+
+
+
+  const docFilesCol = collection(db, COLLECTIONS.leases, leaseId, 'documentFiles');
+
+  const docFilesSnap = await getDocs(docFilesCol);
+
+  await Promise.all(docFilesSnap.docs.map((d) => deleteDoc(d.ref)));
+
+
+
+  const targetTenantId = tenantId ?? lease.tenantId;
+
+  if (lease.unitId && lease.propertyId) {
+
+    const unitSnap = await getDoc(doc(db, COLLECTIONS.units, lease.unitId));
+
+    if (unitSnap.exists() && unitSnap.data().tenantId === targetTenantId) {
+
+      await releaseUnit(lease.unitId, lease.propertyId);
+
+    }
+
+  }
+
+
+
+  await deleteDoc(doc(db, COLLECTIONS.leases, leaseId));
 
 }
 

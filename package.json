@@ -8,6 +8,7 @@
     "build": "vite build",
     "typecheck": "tsc --noEmit",
     "seed": "tsx scripts/seed.ts",
+    "purge:orphans": "tsx scripts/purge-orphaned-tenant-data.ts",
     "firebase:deploy:rules": "firebase deploy --only firestore:rules,firestore:indexes,storage"
   },
   "dependencies": {

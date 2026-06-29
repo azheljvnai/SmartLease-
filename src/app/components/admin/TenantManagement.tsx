@@ -31,6 +31,7 @@ export const TenantManagement = () => {
   const [showForm, setShowForm] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [deleteId, setDeleteId] = useState<string | null>(null);
+  const [deleting, setDeleting] = useState(false);
   const [form, setForm] = useState({
     name: '', email: '', phone: '', propertyId: '', unitId: '', rent: '',
   });
@@ -118,6 +119,20 @@ export const TenantManagement = () => {
       case 'pending': return <Badge variant="warning">Pending</Badge>;
       case 'overdue': return <Badge variant="danger">Overdue</Badge>;
       default: return <Badge variant="default">{status}</Badge>;
+    }
+  };
+
+  const handleDeleteTenant = async () => {
+    if (!deleteId) return;
+    setDeleting(true);
+    try {
+      await deleteTenant(deleteId);
+      toast.success('Tenant and related records deleted');
+      setDeleteId(null);
+    } catch (err) {
+      toast.error(getFirebaseErrorMessage(err));
+    } finally {
+      setDeleting(false);
     }
   };
 
@@ -252,7 +267,16 @@ export const TenantManagement = () => {
         </>
       )}
 
-      <ConfirmDialog open={!!deleteId} onOpenChange={(o) => !o && setDeleteId(null)} title="Delete tenant?" description="This cannot be undone." destructive confirmLabel="Delete" onConfirm={async () => { if (deleteId) { await deleteTenant(deleteId); toast.success('Deleted'); setDeleteId(null); } }} />
+      <ConfirmDialog
+        open={!!deleteId}
+        onOpenChange={(o) => !o && !deleting && setDeleteId(null)}
+        title="Delete tenant?"
+        description="This permanently deletes the tenant and all related leases, invoices, payments, and maintenance requests. This cannot be undone."
+        destructive
+        confirmLabel="Delete"
+        loading={deleting}
+        onConfirm={handleDeleteTenant}
+      />
     </div>
   );
 };
