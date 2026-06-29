@@ -16,6 +16,11 @@ import {
 } from '../../../services/properties.service';
 import type { Property } from '../../../types';
 import { getFirebaseErrorMessage } from '../../../lib/firebase-errors';
+import {
+  clearFieldError,
+  focusFirstFieldError,
+  validateFormFields,
+} from '../../../lib/form-validation';
 import { formatCurrency, formatCurrencyCompact } from '../../../lib/format';
 
 export const PropertyManagement = () => {
@@ -27,6 +32,7 @@ export const PropertyManagement = () => {
   const [deleteId, setDeleteId] = useState<string | null>(null);
   const [editId, setEditId] = useState<string | null>(null);
   const [form, setForm] = useState({ name: '', address: '', units: '24' });
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
 
   useEffect(() => {
     const unsub = subscribeProperties((data) => {
@@ -44,6 +50,18 @@ export const PropertyManagement = () => {
 
   const handleCreate = async (e: React.FormEvent) => {
     e.preventDefault();
+    const result = validateFormFields({
+      name: { value: form.name, label: 'Name', required: true },
+      address: { value: form.address, label: 'Address', required: true },
+      units: { value: form.units, label: 'Units', required: true },
+    });
+    if (!result.valid) {
+      setFieldErrors(result.errors);
+      focusFirstFieldError(result.errors);
+      toast.error(result.message ?? 'Please fix the highlighted fields');
+      return;
+    }
+    setFieldErrors({});
     setSubmitting(true);
     try {
       const slug = form.name.toLowerCase().replace(/\s+/g, '-').slice(0, 30);
@@ -84,6 +102,17 @@ export const PropertyManagement = () => {
   const handleUpdate = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!editId) return;
+    const result = validateFormFields({
+      name: { value: form.name, label: 'Name', required: true },
+      address: { value: form.address, label: 'Address', required: true },
+    });
+    if (!result.valid) {
+      setFieldErrors(result.errors);
+      focusFirstFieldError(result.errors);
+      toast.error(result.message ?? 'Please fix the highlighted fields');
+      return;
+    }
+    setFieldErrors({});
     setSubmitting(true);
     try {
       await updateProperty(editId, {
@@ -118,8 +147,8 @@ export const PropertyManagement = () => {
         <Card>
           <form onSubmit={handleUpdate} className="space-y-4">
             <h3 className="font-semibold text-foreground">Edit Property</h3>
-            <Input label="Name" required value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />
-            <Input label="Address" required value={form.address} onChange={(e) => setForm({ ...form, address: e.target.value })} />
+            <Input label="Name" required fieldKey="name" error={fieldErrors.name} value={form.name} onChange={(e) => { setForm({ ...form, name: e.target.value }); setFieldErrors((p) => clearFieldError(p, 'name')); }} />
+            <Input label="Address" required fieldKey="address" error={fieldErrors.address} value={form.address} onChange={(e) => { setForm({ ...form, address: e.target.value }); setFieldErrors((p) => clearFieldError(p, 'address')); }} />
             <div className="flex gap-2">
               <Button type="submit" variant="primary" loading={submitting}>Save</Button>
               <Button type="button" variant="outline" onClick={() => setEditId(null)}>Cancel</Button>
@@ -132,9 +161,9 @@ export const PropertyManagement = () => {
         <Card>
           <form onSubmit={handleCreate} className="space-y-4">
             <h3 className="font-semibold text-foreground">New Property</h3>
-            <Input label="Name" required value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />
-            <Input label="Address" required value={form.address} onChange={(e) => setForm({ ...form, address: e.target.value })} />
-            <Input label="Units" type="number" required value={form.units} onChange={(e) => setForm({ ...form, units: e.target.value })} />
+            <Input label="Name" required fieldKey="name" error={fieldErrors.name} value={form.name} onChange={(e) => { setForm({ ...form, name: e.target.value }); setFieldErrors((p) => clearFieldError(p, 'name')); }} />
+            <Input label="Address" required fieldKey="address" error={fieldErrors.address} value={form.address} onChange={(e) => { setForm({ ...form, address: e.target.value }); setFieldErrors((p) => clearFieldError(p, 'address')); }} />
+            <Input label="Units" type="number" required fieldKey="units" error={fieldErrors.units} value={form.units} onChange={(e) => { setForm({ ...form, units: e.target.value }); setFieldErrors((p) => clearFieldError(p, 'units')); }} />
             <div className="flex gap-2">
               <Button type="submit" variant="primary" loading={submitting}>Save</Button>
               <Button type="button" variant="outline" onClick={() => setShowForm(false)}>Cancel</Button>

@@ -7,6 +7,11 @@ import { Input } from '../ui/input';
 import { Card } from '../ui/card';
 import { signUp } from '../../../services/auth.service';
 import { getFirebaseErrorMessage } from '../../../lib/firebase-errors';
+import {
+  clearFieldError,
+  focusFirstFieldError,
+  validateFormFields,
+} from '../../../lib/form-validation';
 
 export const Register = () => {
   const navigate = useNavigate();
@@ -19,9 +24,28 @@ export const Register = () => {
     phone: '',
     password: '',
   });
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
 
   const handleRegister = async (e: React.FormEvent) => {
     e.preventDefault();
+    const result = validateFormFields({
+      firstName: { value: form.firstName, label: 'First name', required: true },
+      lastName: { value: form.lastName, label: 'Last name', required: true },
+      email: { value: form.email, label: 'Email address', required: true },
+      password: {
+        value: form.password,
+        label: 'Password',
+        required: true,
+        validate: (v) => (String(v).length < 6 ? 'Password must be at least 6 characters' : null),
+      },
+    });
+    if (!result.valid) {
+      setFieldErrors(result.errors);
+      focusFirstFieldError(result.errors);
+      toast.error(result.message ?? 'Please fix the highlighted fields');
+      return;
+    }
+    setFieldErrors({});
     setLoading(true);
     try {
       await signUp({ ...form, role: 'tenant' });
@@ -34,8 +58,10 @@ export const Register = () => {
     }
   };
 
-  const update = (field: string, value: string) =>
+  const update = (field: string, value: string) => {
     setForm((prev) => ({ ...prev, [field]: value }));
+    setFieldErrors((prev) => clearFieldError(prev, field));
+  };
 
   return (
     <div className="min-h-screen flex items-center justify-center p-4 bg-gradient-to-br from-primary/5 via-background to-secondary/20">
@@ -59,6 +85,8 @@ export const Register = () => {
               label="First Name"
               placeholder="John"
               required
+              fieldKey="firstName"
+              error={fieldErrors.firstName}
               value={form.firstName}
               onChange={(e) => update('firstName', e.target.value)}
             />
@@ -67,6 +95,8 @@ export const Register = () => {
               label="Last Name"
               placeholder="Doe"
               required
+              fieldKey="lastName"
+              error={fieldErrors.lastName}
               value={form.lastName}
               onChange={(e) => update('lastName', e.target.value)}
             />
@@ -77,6 +107,8 @@ export const Register = () => {
             label="Email Address"
             placeholder="you@example.com"
             required
+            fieldKey="email"
+            error={fieldErrors.email}
             value={form.email}
             onChange={(e) => update('email', e.target.value)}
           />
@@ -84,6 +116,7 @@ export const Register = () => {
           <Input
             type="tel"
             label="Phone Number"
+            fieldKey="phone"
             placeholder="09XX XXX XXXX"
             value={form.phone}
             onChange={(e) => update('phone', e.target.value)}
@@ -95,6 +128,8 @@ export const Register = () => {
               label="Password"
               placeholder="Create a strong password"
               required
+              fieldKey="password"
+              error={fieldErrors.password}
               minLength={6}
               value={form.password}
               onChange={(e) => update('password', e.target.value)}

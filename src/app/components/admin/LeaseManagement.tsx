@@ -38,6 +38,7 @@ import {
 import { downloadLeaseDocument } from '../../../services/storage.service';
 import type { Property, Unit, Lease, LeaseAgreementFormData } from '../../../types';
 import { getFirebaseErrorMessage } from '../../../lib/firebase-errors';
+import { focusFirstFieldError } from '../../../lib/form-validation';
 import { formatCurrency } from '../../../lib/format';
 import {
   LeaseInformationForm,
@@ -75,6 +76,7 @@ export const LeaseManagement = () => {
   const [propertyId, setPropertyId] = useState('');
   const [unitId, setUnitId] = useState('');
   const [agreement, setAgreement] = useState(defaultLeaseAgreementForm());
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
 
   const [confirmTerminate, setConfirmTerminate] = useState<Lease | null>(null);
   const [confirmDelete, setConfirmDelete] = useState<Lease | null>(null);
@@ -159,11 +161,14 @@ export const LeaseManagement = () => {
       return;
     }
 
-    const validationError = validateLeaseAgreementForm(agreement);
-    if (validationError) {
-      toast.error(validationError);
+    const validation = validateLeaseAgreementForm(agreement);
+    if (!validation.valid) {
+      setFieldErrors(validation.errors);
+      focusFirstFieldError(validation.errors);
+      toast.error(validation.message ?? 'Please fix the highlighted fields');
       return;
     }
+    setFieldErrors({});
 
     setSubmitting(true);
     try {
@@ -577,7 +582,15 @@ export const LeaseManagement = () => {
             )}
 
             {currentStep === 2 && (
-              <LeaseInformationForm value={agreement} onChange={setAgreement} lockLesseeContact />
+              <LeaseInformationForm
+                value={agreement}
+                onChange={(v) => {
+                  setAgreement(v);
+                  setFieldErrors({});
+                }}
+                errors={fieldErrors}
+                lockLesseeContact
+              />
             )}
 
             {currentStep === 3 && (

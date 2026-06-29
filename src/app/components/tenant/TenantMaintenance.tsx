@@ -22,6 +22,13 @@ import {
   maintenanceStatusVariant,
   normalizeMaintenanceStatus,
 } from '../../../lib/maintenance-labels';
+import {
+  clearFieldError,
+  focusFirstFieldError,
+  validateFormFields,
+} from '../../../lib/form-validation';
+import { FormSelect } from '../ui/form-select';
+import { Textarea } from '../ui/textarea';
 
 export const TenantMaintenance = () => {
   const { tenant } = useAuth();
@@ -37,6 +44,7 @@ export const TenantMaintenance = () => {
     description: '',
     priority: 'medium' as MaintenancePriority,
   });
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
 
   useEffect(() => {
     if (!tenant) {
@@ -69,6 +77,16 @@ export const TenantMaintenance = () => {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!tenant) return;
+    const result = validateFormFields({
+      issue: { value: newRequest.issue, label: 'Issue summary', required: true },
+    });
+    if (!result.valid) {
+      setFieldErrors(result.errors);
+      focusFirstFieldError(result.errors);
+      toast.error(result.message ?? 'Please fix the highlighted fields');
+      return;
+    }
+    setFieldErrors({});
     setSubmitting(true);
     try {
       const requestId = await createMaintenanceRequest({
@@ -149,34 +167,46 @@ export const TenantMaintenance = () => {
               <button type="button" onClick={() => setShowModal(false)}><X /></button>
             </div>
             <form onSubmit={handleSubmit} className="space-y-4">
-              <Input label="Issue Summary" required value={newRequest.issue} onChange={(e) => setNewRequest({ ...newRequest, issue: e.target.value })} />
-              <div>
-                <label className="text-sm font-medium">Category</label>
-                <select className="w-full mt-1 h-9 border rounded-md px-3" value={newRequest.category} onChange={(e) => setNewRequest({ ...newRequest, category: e.target.value })}>
-                  <option>Plumbing</option><option>HVAC</option><option>Electrical</option><option>General</option>
-                </select>
-              </div>
-              <div>
-                <label className="text-sm font-medium">Priority</label>
-                <select
-                  className="w-full mt-1 h-9 border rounded-md px-3"
-                  value={newRequest.priority}
-                  onChange={(e) => setNewRequest({ ...newRequest, priority: e.target.value as MaintenancePriority })}
-                >
-                  <option value="low">Low</option>
-                  <option value="medium">Medium</option>
-                  <option value="high">High</option>
-                  <option value="emergency">Emergency</option>
-                </select>
-              </div>
-              <textarea
-                className="w-full min-h-24 border rounded-md p-3 text-sm"
+              <Input
+                label="Issue Summary"
+                required
+                fieldKey="issue"
+                error={fieldErrors.issue}
+                value={newRequest.issue}
+                onChange={(e) => {
+                  setNewRequest({ ...newRequest, issue: e.target.value });
+                  setFieldErrors((p) => clearFieldError(p, 'issue'));
+                }}
+              />
+              <FormSelect
+                label="Category"
+                fieldKey="category"
+                value={newRequest.category}
+                onChange={(e) => setNewRequest({ ...newRequest, category: e.target.value })}
+              >
+                <option>Plumbing</option><option>HVAC</option><option>Electrical</option><option>General</option>
+              </FormSelect>
+              <FormSelect
+                label="Priority"
+                fieldKey="priority"
+                value={newRequest.priority}
+                onChange={(e) => setNewRequest({ ...newRequest, priority: e.target.value as MaintenancePriority })}
+              >
+                <option value="low">Low</option>
+                <option value="medium">Medium</option>
+                <option value="high">High</option>
+                <option value="emergency">Emergency</option>
+              </FormSelect>
+              <Textarea
+                label="Description"
+                fieldKey="description"
                 placeholder="Detailed description..."
                 value={newRequest.description}
                 onChange={(e) => setNewRequest({ ...newRequest, description: e.target.value })}
+                rows={4}
               />
               <div>
-                <label className="text-sm font-medium text-foreground">Photo (optional)</label>
+                <label className="text-sm font-medium text-foreground">Photo <span className="text-muted-foreground font-normal">(optional)</span></label>
                 <p className="text-xs text-muted-foreground mb-1">Spark plan: images stored in Firestore (max 500KB), not Firebase Storage.</p>
                 <input
                   type="file"

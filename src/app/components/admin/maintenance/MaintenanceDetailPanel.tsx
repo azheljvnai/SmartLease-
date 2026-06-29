@@ -60,6 +60,12 @@ import {
 } from '../../../../services/maintenance.service';
 import { fileToDataUrl } from '../../../../lib/file-upload';
 import { getFirebaseErrorMessage } from '../../../../lib/firebase-errors';
+import {
+  clearFieldError,
+  focusFirstFieldError,
+  validateFormFields,
+} from '../../../../lib/form-validation';
+import { Textarea } from '../../ui/textarea';
 
 interface Props {
   request: MaintenanceRequest;
@@ -100,6 +106,7 @@ export function MaintenanceDetailPanel({
   const [infoOpen, setInfoOpen] = useState(false);
   const [infoMessage, setInfoMessage] = useState('');
   const [busy, setBusy] = useState(false);
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
 
   const CategoryIcon = maintenanceCategoryIcon(request.category);
   const normalized = normalizeMaintenanceStatus(request.status);
@@ -148,9 +155,18 @@ export function MaintenanceDetailPanel({
       );
     }, 'Costs updated');
 
-  const handleSchedule = () =>
+  const handleSchedule = () => {
+    const result = validateFormFields({
+      'schedule.date': { value: scheduleForm.date, label: 'Schedule date', required: true },
+    });
+    if (!result.valid) {
+      setFieldErrors(result.errors);
+      focusFirstFieldError(result.errors);
+      toast.error(result.message ?? 'Please fix the highlighted fields');
+      return;
+    }
+    setFieldErrors({});
     run(async () => {
-      if (!scheduleForm.date) throw new Error('Schedule date is required');
       await scheduleMaintenance(
         request.id,
         {
@@ -161,6 +177,7 @@ export function MaintenanceDetailPanel({
         authorName,
       );
     }, 'Repair scheduled');
+  };
 
   const handleComplete = () =>
     run(async () => {
@@ -282,9 +299,32 @@ export function MaintenanceDetailPanel({
         <section className="rounded-lg border p-3 space-y-3">
           <h3 className="text-sm font-medium flex items-center gap-1"><Calendar className="w-4 h-4" />Schedule</h3>
           <div className="grid sm:grid-cols-3 gap-2">
-            <Input type="date" value={scheduleForm.date} onChange={(e) => setScheduleForm({ ...scheduleForm, date: e.target.value })} />
-            <Input type="time" value={scheduleForm.time} onChange={(e) => setScheduleForm({ ...scheduleForm, time: e.target.value })} />
-            <Input type="date" value={scheduleForm.estimatedCompletion} onChange={(e) => setScheduleForm({ ...scheduleForm, estimatedCompletion: e.target.value })} placeholder="Est. completion" />
+            <Input
+              label="Schedule Date"
+              type="date"
+              required
+              fieldKey="schedule.date"
+              error={fieldErrors['schedule.date']}
+              value={scheduleForm.date}
+              onChange={(e) => {
+                setScheduleForm({ ...scheduleForm, date: e.target.value });
+                setFieldErrors((prev) => clearFieldError(prev, 'schedule.date'));
+              }}
+            />
+            <Input
+              label="Time"
+              type="time"
+              fieldKey="schedule.time"
+              value={scheduleForm.time}
+              onChange={(e) => setScheduleForm({ ...scheduleForm, time: e.target.value })}
+            />
+            <Input
+              label="Est. Completion"
+              type="date"
+              fieldKey="schedule.estimatedCompletion"
+              value={scheduleForm.estimatedCompletion}
+              onChange={(e) => setScheduleForm({ ...scheduleForm, estimatedCompletion: e.target.value })}
+            />
           </div>
           <Button size="sm" variant="outline" disabled={busy} onClick={handleSchedule}>Save Schedule</Button>
         </section>
@@ -295,12 +335,12 @@ export function MaintenanceDetailPanel({
             <span className="text-sm font-semibold">Total: {formatCurrency(totalCost)}</span>
           </div>
           <div className="grid sm:grid-cols-2 gap-2">
-            <Input label="Estimated" type="number" value={costForm.estimatedCost} onChange={(e) => setCostForm({ ...costForm, estimatedCost: e.target.value })} />
-            <Input label="Labor" type="number" value={costForm.laborCost} onChange={(e) => setCostForm({ ...costForm, laborCost: e.target.value })} />
-            <Input label="Materials" type="number" value={costForm.materialsCost} onChange={(e) => setCostForm({ ...costForm, materialsCost: e.target.value })} />
-            <Input label="Additional" type="number" value={costForm.additionalCharges} onChange={(e) => setCostForm({ ...costForm, additionalCharges: e.target.value })} />
+            <Input label="Estimated" type="number" fieldKey="cost.estimatedCost" value={costForm.estimatedCost} onChange={(e) => setCostForm({ ...costForm, estimatedCost: e.target.value })} />
+            <Input label="Labor" type="number" fieldKey="cost.laborCost" value={costForm.laborCost} onChange={(e) => setCostForm({ ...costForm, laborCost: e.target.value })} />
+            <Input label="Materials" type="number" fieldKey="cost.materialsCost" value={costForm.materialsCost} onChange={(e) => setCostForm({ ...costForm, materialsCost: e.target.value })} />
+            <Input label="Additional" type="number" fieldKey="cost.additionalCharges" value={costForm.additionalCharges} onChange={(e) => setCostForm({ ...costForm, additionalCharges: e.target.value })} />
           </div>
-          <Input label="Materials Used" value={costForm.materialsUsed} onChange={(e) => setCostForm({ ...costForm, materialsUsed: e.target.value })} />
+          <Input label="Materials Used" fieldKey="cost.materialsUsed" value={costForm.materialsUsed} onChange={(e) => setCostForm({ ...costForm, materialsUsed: e.target.value })} />
           <select
             className="w-full h-9 border rounded-md px-3 text-sm bg-background"
             value={costForm.paymentStatus}
@@ -470,23 +510,39 @@ export function MaintenanceDetailPanel({
               The tenant will be notified in-app and by email.
             </AlertDialogDescription>
           </AlertDialogHeader>
-          <textarea
-            className="w-full min-h-20 border rounded-md p-2 text-sm"
+          <Textarea
+            label="Message"
+            required
+            fieldKey="infoMessage"
+            error={fieldErrors.infoMessage}
             value={infoMessage}
-            onChange={(e) => setInfoMessage(e.target.value)}
+            onChange={(e) => {
+              setInfoMessage(e.target.value);
+              setFieldErrors((prev) => clearFieldError(prev, 'infoMessage'));
+            }}
             placeholder="What information do you need?"
+            rows={4}
           />
           <AlertDialogFooter>
             <AlertDialogCancel>Cancel</AlertDialogCancel>
             <AlertDialogAction
-              onClick={() =>
+              onClick={() => {
+                const result = validateFormFields({
+                  infoMessage: { value: infoMessage, label: 'Message', required: true },
+                });
+                if (!result.valid) {
+                  setFieldErrors(result.errors);
+                  focusFirstFieldError(result.errors);
+                  toast.error(result.message ?? 'Please fix the highlighted fields');
+                  return;
+                }
                 run(async () => {
-                  if (!infoMessage.trim()) throw new Error('Message required');
                   await requestAdditionalInfo(request.id, infoMessage.trim(), authorName);
                   setInfoMessage('');
+                  setFieldErrors({});
                   setInfoOpen(false);
-                }, 'Information requested')
-              }
+                }, 'Information requested');
+              }}
             >
               Send request
             </AlertDialogAction>

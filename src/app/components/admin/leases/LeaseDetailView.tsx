@@ -23,6 +23,7 @@ import {
 } from '../../lease/LeaseInformationForm';
 import { listLeaseHistory, updateLeaseAgreement } from '../../../../services/leases.service';
 import { getFirebaseErrorMessage } from '../../../../lib/firebase-errors';
+import { focusFirstFieldError } from '../../../../lib/form-validation';
 import { serializeTimestamp } from '../../../../lib/firestore';
 
 interface Props {
@@ -40,6 +41,7 @@ export function LeaseDetailView({ lease, mode, onBack, onUpdated, onModeChange }
   const [history, setHistory] = useState<LeaseHistoryEntry[]>([]);
   const [saving, setSaving] = useState(false);
   const [loadingHistory, setLoadingHistory] = useState(true);
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
 
   const lifecycle = getLeaseLifecycleStatus(lease);
   const canEdit = lease.status !== 'terminated' && lease.status !== 'renewed';
@@ -57,11 +59,14 @@ export function LeaseDetailView({ lease, mode, onBack, onUpdated, onModeChange }
   }, [lease.id, lease.updatedAt]);
 
   const handleSave = async () => {
-    const err = validateLeaseAgreementForm(agreement);
-    if (err) {
-      toast.error(err);
+    const validation = validateLeaseAgreementForm(agreement);
+    if (!validation.valid) {
+      setFieldErrors(validation.errors);
+      focusFirstFieldError(validation.errors);
+      toast.error(validation.message ?? 'Please fix the highlighted fields');
       return;
     }
+    setFieldErrors({});
     setSaving(true);
     try {
       await updateLeaseAgreement(lease.id, agreement);
@@ -147,7 +152,15 @@ export function LeaseDetailView({ lease, mode, onBack, onUpdated, onModeChange }
 
       {mode === 'edit' ? (
         <Card className="p-4">
-          <LeaseInformationForm value={agreement} onChange={setAgreement} lockLesseeContact />
+          <LeaseInformationForm
+            value={agreement}
+            onChange={(v) => {
+              setAgreement(v);
+              setFieldErrors({});
+            }}
+            errors={fieldErrors}
+            lockLesseeContact
+          />
         </Card>
       ) : (
         <LeaseDocumentPanel

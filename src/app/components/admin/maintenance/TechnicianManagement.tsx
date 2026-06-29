@@ -10,6 +10,11 @@ import { createTechnician, updateTechnician } from '../../../../services/mainten
 import { countOpenByTechnician } from '../../../../lib/maintenance-utils';
 import type { MaintenanceRequest } from '../../../../types';
 import { getFirebaseErrorMessage } from '../../../../lib/firebase-errors';
+import {
+  clearFieldError,
+  focusFirstFieldError,
+  validateFormFields,
+} from '../../../../lib/form-validation';
 
 interface Props {
   technicians: Technician[];
@@ -35,9 +40,20 @@ export function TechnicianManagement({ technicians, properties, requests, onRefr
     availability: 'available' as Technician['availability'],
     propertyIds: [] as string[],
   });
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    const result = validateFormFields({
+      name: { value: form.name, label: 'Name', required: true },
+    });
+    if (!result.valid) {
+      setFieldErrors(result.errors);
+      focusFirstFieldError(result.errors);
+      toast.error(result.message ?? 'Please fix the highlighted fields');
+      return;
+    }
+    setFieldErrors({});
     setSubmitting(true);
     try {
       await createTechnician({
@@ -173,10 +189,10 @@ export function TechnicianManagement({ technicians, properties, requests, onRefr
               <button type="button" onClick={() => setShowForm(false)}><X className="w-5 h-5" /></button>
             </div>
             <form onSubmit={handleSubmit} className="space-y-4">
-              <Input label="Name" required value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />
-              <Input label="Email" type="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} />
-              <Input label="Phone" value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} />
-              <Input label="Specialties (comma-separated)" value={form.specialties} onChange={(e) => setForm({ ...form, specialties: e.target.value })} placeholder="Plumbing, HVAC" />
+              <Input label="Name" required fieldKey="name" error={fieldErrors.name} value={form.name} onChange={(e) => { setForm({ ...form, name: e.target.value }); setFieldErrors((p) => clearFieldError(p, 'name')); }} />
+              <Input label="Email" type="email" fieldKey="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} />
+              <Input label="Phone" fieldKey="phone" value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} />
+              <Input label="Specialties" fieldKey="specialties" value={form.specialties} onChange={(e) => setForm({ ...form, specialties: e.target.value })} placeholder="Plumbing, HVAC" />
               <div>
                 <label className="text-sm font-medium">Assigned Properties</label>
                 <div className="mt-2 space-y-1 max-h-32 overflow-y-auto border rounded-md p-2">

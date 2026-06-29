@@ -45,8 +45,11 @@ Set these as secrets in your CI/CD platform:
 - `VITE_FIREBASE_MESSAGING_SENDER_ID`
 - `VITE_FIREBASE_APP_ID`
 - `VITE_PAYMENT_GATEWAY=demo`
+- `VITE_EMAILJS_SERVICE_ID`
+- `VITE_EMAILJS_TEMPLATE_ID`
+- `VITE_EMAILJS_PUBLIC_KEY`
 
-Rebuild on each deploy — Vite inlines env vars at build time.
+Rebuild on each deploy — Vite inlines env vars at build time. If you add or change any `VITE_*` variable in the Netlify UI, you must **trigger a new deploy** (e.g. Deploys → Trigger deploy → Clear cache and deploy site) for the change to appear in production.
 
 ## Deploy rules separately
 

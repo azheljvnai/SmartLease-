@@ -10,6 +10,13 @@ import { listAllNotices, createNotice } from '../../../services/notices.service'
 import { listProperties } from '../../../services/properties.service';
 import type { Notice, Property } from '../../../types';
 import { getFirebaseErrorMessage } from '../../../lib/firebase-errors';
+import {
+  clearFieldError,
+  focusFirstFieldError,
+  validateFormFields,
+} from '../../../lib/form-validation';
+import { FormSelect } from '../ui/form-select';
+import { Textarea } from '../ui/textarea';
 
 export const NoticesAdmin = () => {
   const [notices, setNotices] = useState<Notice[]>([]);
@@ -18,6 +25,7 @@ export const NoticesAdmin = () => {
   const [showForm, setShowForm] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [form, setForm] = useState({ title: '', body: '', propertyId: '', effectiveDate: '' });
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
 
   useEffect(() => {
     Promise.all([listAllNotices(), listProperties()]).then(([n, p]) => {
@@ -29,6 +37,18 @@ export const NoticesAdmin = () => {
 
   const handleCreate = async (e: React.FormEvent) => {
     e.preventDefault();
+    const result = validateFormFields({
+      title: { value: form.title, label: 'Title', required: true },
+      body: { value: form.body, label: 'Message', required: true },
+      effectiveDate: { value: form.effectiveDate, label: 'Effective date', required: true },
+    });
+    if (!result.valid) {
+      setFieldErrors(result.errors);
+      focusFirstFieldError(result.errors);
+      toast.error(result.message ?? 'Please fix the highlighted fields');
+      return;
+    }
+    setFieldErrors({});
     setSubmitting(true);
     try {
       await createNotice({
@@ -64,24 +84,26 @@ export const NoticesAdmin = () => {
       {showForm && (
         <Card>
           <form onSubmit={handleCreate} className="space-y-4">
-            <Input label="Title" required value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} />
-            <div>
-              <label className="text-sm font-medium">Message</label>
-              <textarea
-                className="w-full mt-1 min-h-24 rounded-md border px-3 py-2 text-sm"
-                required
-                value={form.body}
-                onChange={(e) => setForm({ ...form, body: e.target.value })}
-              />
-            </div>
-            <div>
-              <label className="text-sm font-medium">Property (optional)</label>
-              <select className="w-full mt-1 h-9 rounded-md border px-3" value={form.propertyId} onChange={(e) => setForm({ ...form, propertyId: e.target.value })}>
-                <option value="">All properties</option>
-                {properties.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
-              </select>
-            </div>
-            <Input label="Effective Date" type="date" required value={form.effectiveDate} onChange={(e) => setForm({ ...form, effectiveDate: e.target.value })} />
+            <Input label="Title" required fieldKey="title" error={fieldErrors.title} value={form.title} onChange={(e) => { setForm({ ...form, title: e.target.value }); setFieldErrors((p) => clearFieldError(p, 'title')); }} />
+            <Textarea
+              label="Message"
+              required
+              fieldKey="body"
+              error={fieldErrors.body}
+              value={form.body}
+              onChange={(e) => { setForm({ ...form, body: e.target.value }); setFieldErrors((p) => clearFieldError(p, 'body')); }}
+              rows={4}
+            />
+            <FormSelect
+              label="Property"
+              fieldKey="propertyId"
+              value={form.propertyId}
+              onChange={(e) => setForm({ ...form, propertyId: e.target.value })}
+            >
+              <option value="">All properties</option>
+              {properties.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+            </FormSelect>
+            <Input label="Effective Date" type="date" required fieldKey="effectiveDate" error={fieldErrors.effectiveDate} value={form.effectiveDate} onChange={(e) => { setForm({ ...form, effectiveDate: e.target.value }); setFieldErrors((p) => clearFieldError(p, 'effectiveDate')); }} />
             <div className="flex gap-2">
               <Button type="submit" variant="primary" loading={submitting}>Publish</Button>
               <Button type="button" variant="outline" onClick={() => setShowForm(false)}>Cancel</Button>

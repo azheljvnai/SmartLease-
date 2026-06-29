@@ -12,6 +12,12 @@ import { listProperties } from '../../../services/properties.service';
 import { listVacantUnitsByProperty } from '../../../services/units.service';
 import type { Property, Tenant, Unit } from '../../../types';
 import { getFirebaseErrorMessage } from '../../../lib/firebase-errors';
+import {
+  clearFieldError,
+  focusFirstFieldError,
+  validateFormFields,
+} from '../../../lib/form-validation';
+import { FormSelect } from '../ui/form-select';
 import { formatCurrency } from '../../../lib/format';
 import { ConfirmDialog } from '../common/ConfirmDialog';
 
@@ -28,6 +34,7 @@ export const TenantManagement = () => {
   const [form, setForm] = useState({
     name: '', email: '', phone: '', propertyId: '', unitId: '', rent: '',
   });
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
 
   useEffect(() => {
     const unsub = subscribeTenants(setTenants);
@@ -64,6 +71,20 @@ export const TenantManagement = () => {
 
   const handleCreate = async (e: React.FormEvent) => {
     e.preventDefault();
+    const result = validateFormFields({
+      name: { value: form.name, label: 'Full name', required: true },
+      email: { value: form.email, label: 'Email', required: true },
+      rent: { value: form.rent, label: 'Monthly rent', required: true },
+      propertyId: { value: form.propertyId, label: 'Property', required: true },
+      unitId: { value: form.unitId, label: 'Unit', required: true },
+    });
+    if (!result.valid) {
+      setFieldErrors(result.errors);
+      focusFirstFieldError(result.errors);
+      toast.error(result.message ?? 'Please fix the highlighted fields');
+      return;
+    }
+    setFieldErrors({});
     const property = properties.find((p) => p.id === form.propertyId);
     const unit = propertyUnits.find((u) => u.id === form.unitId);
     if (!property || !unit) {
@@ -117,35 +138,44 @@ export const TenantManagement = () => {
       {showForm && (
         <Card>
           <form onSubmit={handleCreate} className="space-y-4 grid sm:grid-cols-2 gap-4">
-            <Input label="Full Name" required value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />
-            <Input label="Email" type="email" required value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} />
-            <Input label="Phone" value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} />
-            <Input label="Monthly Rent" type="number" required value={form.rent} onChange={(e) => setForm({ ...form, rent: e.target.value })} />
-            <div>
-              <label className="text-sm font-medium">Property</label>
-              <select className="w-full mt-1 h-9 rounded-md border px-3" value={form.propertyId} onChange={(e) => setForm({ ...form, propertyId: e.target.value, unitId: '' })} required>
-                <option value="">Select property</option>
-                {properties.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
-              </select>
-            </div>
-            <div>
-              <label className="text-sm font-medium">Unit</label>
-              <select
-                className="w-full mt-1 h-9 rounded-md border px-3 disabled:opacity-50"
-                value={form.unitId}
-                onChange={(e) => setForm({ ...form, unitId: e.target.value })}
-                disabled={!form.propertyId || loadingUnits}
-                required
-              >
-                <option value="">{loadingUnits ? 'Loading units...' : 'Select unit'}</option>
-                {propertyUnits.map((u) => <option key={u.id} value={u.id}>Unit {u.unitNumber}</option>)}
-              </select>
-              {form.propertyId && !loadingUnits && propertyUnits.length === 0 && (
-                <p className="text-xs text-muted-foreground mt-1">
-                  No vacant units for this property. All units are occupied or none exist yet.
-                </p>
-              )}
-            </div>
+            <Input label="Full Name" required fieldKey="name" error={fieldErrors.name} value={form.name} onChange={(e) => { setForm({ ...form, name: e.target.value }); setFieldErrors((p) => clearFieldError(p, 'name')); }} />
+            <Input label="Email" type="email" required fieldKey="email" error={fieldErrors.email} value={form.email} onChange={(e) => { setForm({ ...form, email: e.target.value }); setFieldErrors((p) => clearFieldError(p, 'email')); }} />
+            <Input label="Phone" fieldKey="phone" value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} />
+            <Input label="Monthly Rent" type="number" required fieldKey="rent" error={fieldErrors.rent} value={form.rent} onChange={(e) => { setForm({ ...form, rent: e.target.value }); setFieldErrors((p) => clearFieldError(p, 'rent')); }} />
+            <FormSelect
+              label="Property"
+              required
+              fieldKey="propertyId"
+              error={fieldErrors.propertyId}
+              value={form.propertyId}
+              onChange={(e) => {
+                setForm({ ...form, propertyId: e.target.value, unitId: '' });
+                setFieldErrors((p) => clearFieldError(p, 'propertyId'));
+              }}
+            >
+              <option value="">Select property</option>
+              {properties.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+            </FormSelect>
+            <FormSelect
+              label="Unit"
+              required
+              fieldKey="unitId"
+              error={fieldErrors.unitId}
+              value={form.unitId}
+              onChange={(e) => {
+                setForm({ ...form, unitId: e.target.value });
+                setFieldErrors((p) => clearFieldError(p, 'unitId'));
+              }}
+              disabled={!form.propertyId || loadingUnits}
+            >
+              <option value="">{loadingUnits ? 'Loading units...' : 'Select unit'}</option>
+              {propertyUnits.map((u) => <option key={u.id} value={u.id}>Unit {u.unitNumber}</option>)}
+            </FormSelect>
+            {form.propertyId && !loadingUnits && propertyUnits.length === 0 && (
+              <p className="text-xs text-muted-foreground sm:col-span-2">
+                No vacant units for this property. All units are occupied or none exist yet.
+              </p>
+            )}
             <div className="sm:col-span-2 flex gap-2">
               <Button type="submit" variant="primary" loading={submitting}>Save</Button>
               <Button type="button" variant="outline" onClick={() => setShowForm(false)}>Cancel</Button>

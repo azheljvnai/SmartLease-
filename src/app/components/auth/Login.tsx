@@ -7,6 +7,11 @@ import { Input } from '../ui/input';
 import { Card } from '../ui/card';
 import { signIn } from '../../../services/auth.service';
 import { getFirebaseErrorMessage } from '../../../lib/firebase-errors';
+import {
+  clearFieldError,
+  focusFirstFieldError,
+  validateFormFields,
+} from '../../../lib/form-validation';
 
 export const Login = () => {
   const navigate = useNavigate();
@@ -14,9 +19,21 @@ export const Login = () => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
+    const result = validateFormFields({
+      email: { value: email, label: 'Email address', required: true },
+      password: { value: password, label: 'Password', required: true },
+    });
+    if (!result.valid) {
+      setFieldErrors(result.errors);
+      focusFirstFieldError(result.errors);
+      toast.error(result.message ?? 'Please fix the highlighted fields');
+      return;
+    }
+    setFieldErrors({});
     setLoading(true);
     try {
       const profile = await signIn(email, password);
@@ -98,8 +115,13 @@ export const Login = () => {
               label="Email Address"
               placeholder="admin@smartlease.demo"
               required
+              fieldKey="email"
+              error={fieldErrors.email}
               value={email}
-              onChange={(e) => setEmail(e.target.value)}
+              onChange={(e) => {
+                setEmail(e.target.value);
+                setFieldErrors((p) => clearFieldError(p, 'email'));
+              }}
             />
 
             <div className="relative">
@@ -108,8 +130,13 @@ export const Login = () => {
                 label="Password"
                 placeholder="Enter your password"
                 required
+                fieldKey="password"
+                error={fieldErrors.password}
                 value={password}
-                onChange={(e) => setPassword(e.target.value)}
+                onChange={(e) => {
+                  setPassword(e.target.value);
+                  setFieldErrors((p) => clearFieldError(p, 'password'));
+                }}
               />
               <button
                 type="button"

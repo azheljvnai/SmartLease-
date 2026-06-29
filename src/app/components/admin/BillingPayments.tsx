@@ -67,6 +67,13 @@ import type { Invoice, InvoiceEmailStatus, Tenant } from '../../../types';
 import { formatCurrency, formatDate } from '../../../lib/format';
 
 import { getFirebaseErrorMessage } from '../../../lib/firebase-errors';
+import {
+  clearFieldError,
+  focusFirstFieldError,
+  validateFormFields,
+} from '../../../lib/form-validation';
+import { FormSelect } from '../ui/form-select';
+import { Textarea } from '../ui/textarea';
 
 import { isEmailConfigured } from '../../../services/email.service';
 
@@ -157,6 +164,8 @@ export const BillingPayments = () => {
     sendEmail: true,
 
   });
+
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
 
 
 
@@ -295,6 +304,30 @@ export const BillingPayments = () => {
   const handleCreateInvoice = async (e: React.FormEvent) => {
 
     e.preventDefault();
+
+    const result = validateFormFields({
+
+      tenantId: { value: form.tenantId, label: 'Tenant', required: true },
+
+      amount: { value: form.amount, label: 'Amount', required: true },
+
+      dueDate: { value: form.dueDate, label: 'Due date', required: true },
+
+    });
+
+    if (!result.valid) {
+
+      setFieldErrors(result.errors);
+
+      focusFirstFieldError(result.errors);
+
+      toast.error(result.message ?? 'Please fix the highlighted fields');
+
+      return;
+
+    }
+
+    setFieldErrors({});
 
     const tenant = tenants.find((t) => t.id === form.tenantId);
 
@@ -600,7 +633,10 @@ export const BillingPayments = () => {
 
           <p className="text-sm text-amber-800">
 
-            Email delivery is not configured. Add EmailJS variables in your <code>.env</code> to send invoices by email.
+            Email delivery is not configured. Set{' '}
+            <code>VITE_EMAILJS_SERVICE_ID</code>, <code>VITE_EMAILJS_TEMPLATE_ID</code>, and{' '}
+            <code>VITE_EMAILJS_PUBLIC_KEY</code> in Netlify environment variables (scoped to
+            builds), then trigger a new deploy — Vite only reads these at build time.
 
           </p>
 
@@ -618,51 +654,51 @@ export const BillingPayments = () => {
 
           <form onSubmit={handleCreateInvoice} className="grid sm:grid-cols-2 gap-4">
 
-            <div>
+            <FormSelect
 
-              <label className="text-sm font-medium">Tenant</label>
+              label="Tenant"
 
-              <select
+              required
 
-                className="w-full mt-1 h-9 rounded-md border px-3"
+              fieldKey="tenantId"
 
-                value={form.tenantId}
+              error={fieldErrors.tenantId}
 
-                onChange={(e) => {
+              value={form.tenantId}
 
-                  const t = tenants.find((x) => x.id === e.target.value);
+              onChange={(e) => {
 
-                  setForm({
+                const t = tenants.find((x) => x.id === e.target.value);
 
-                    ...form,
+                setForm({
 
-                    tenantId: e.target.value,
+                  ...form,
 
-                    amount: t ? String(t.rent) : '',
+                  tenantId: e.target.value,
 
-                  });
+                  amount: t ? String(t.rent) : '',
 
-                }}
+                });
 
-                required
+                setFieldErrors((p) => clearFieldError(p, 'tenantId'));
 
-              >
+              }}
 
-                <option value="">Select tenant</option>
+            >
 
-                {tenants.map((t) => (
+              <option value="">Select tenant</option>
 
-                  <option key={t.id} value={t.id}>
+              {tenants.map((t) => (
 
-                    {t.name} — {t.unitLabel}
+                <option key={t.id} value={t.id}>
 
-                  </option>
+                  {t.name} — {t.unitLabel}
 
-                ))}
+                </option>
 
-              </select>
+              ))}
 
-            </div>
+            </FormSelect>
 
             <Input
 
@@ -672,9 +708,19 @@ export const BillingPayments = () => {
 
               required
 
+              fieldKey="amount"
+
+              error={fieldErrors.amount}
+
               value={form.amount}
 
-              onChange={(e) => setForm({ ...form, amount: e.target.value })}
+              onChange={(e) => {
+
+                setForm({ ...form, amount: e.target.value });
+
+                setFieldErrors((p) => clearFieldError(p, 'amount'));
+
+              }}
 
             />
 
@@ -686,17 +732,29 @@ export const BillingPayments = () => {
 
               required
 
+              fieldKey="dueDate"
+
+              error={fieldErrors.dueDate}
+
               value={form.dueDate}
 
-              onChange={(e) => handleDueDateChange(e.target.value)}
+              onChange={(e) => {
+
+                handleDueDateChange(e.target.value);
+
+                setFieldErrors((p) => clearFieldError(p, 'dueDate'));
+
+              }}
 
             />
 
             <Input
 
-              label="Late Fee (optional)"
+              label="Late Fee"
 
               type="number"
+
+              fieldKey="lateFee"
 
               value={form.lateFee}
 
@@ -710,6 +768,8 @@ export const BillingPayments = () => {
 
               type="date"
 
+              fieldKey="billingPeriodStart"
+
               value={form.billingPeriodStart}
 
               onChange={(e) => setForm({ ...form, billingPeriodStart: e.target.value })}
@@ -722,6 +782,8 @@ export const BillingPayments = () => {
 
               type="date"
 
+              fieldKey="billingPeriodEnd"
+
               value={form.billingPeriodEnd}
 
               onChange={(e) => setForm({ ...form, billingPeriodEnd: e.target.value })}
@@ -730,11 +792,11 @@ export const BillingPayments = () => {
 
             <div className="sm:col-span-2">
 
-              <label className="text-sm font-medium">Notes (optional)</label>
+              <Textarea
 
-              <textarea
+                label="Notes"
 
-                className="w-full mt-1 min-h-20 border rounded-md p-3 text-sm"
+                fieldKey="notes"
 
                 value={form.notes}
 

@@ -7,14 +7,30 @@ import { Input } from '../ui/input';
 import { Card } from '../ui/card';
 import { resetPassword } from '../../../services/auth.service';
 import { getFirebaseErrorMessage } from '../../../lib/firebase-errors';
+import {
+  clearFieldError,
+  focusFirstFieldError,
+  validateFormFields,
+} from '../../../lib/form-validation';
 
 export const ForgotPassword = () => {
   const [email, setEmail] = useState('');
   const [loading, setLoading] = useState(false);
   const [sent, setSent] = useState(false);
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    const result = validateFormFields({
+      email: { value: email, label: 'Email address', required: true },
+    });
+    if (!result.valid) {
+      setFieldErrors(result.errors);
+      focusFirstFieldError(result.errors);
+      toast.error(result.message ?? 'Please fix the highlighted fields');
+      return;
+    }
+    setFieldErrors({});
     setLoading(true);
     try {
       await resetPassword(email);
@@ -50,8 +66,13 @@ export const ForgotPassword = () => {
               label="Email Address"
               type="email"
               required
+              fieldKey="email"
+              error={fieldErrors.email}
               value={email}
-              onChange={(e) => setEmail(e.target.value)}
+              onChange={(e) => {
+                setEmail(e.target.value);
+                setFieldErrors((p) => clearFieldError(p, 'email'));
+              }}
               placeholder="you@example.com"
             />
             <Button type="submit" variant="primary" className="w-full" loading={loading}>

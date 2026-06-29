@@ -22,7 +22,7 @@ import type {
   MaintenanceUpdateType,
   Technician,
 } from '../types';
-import { docToData, serverTimestamps, toTimestamp } from '../lib/firestore';
+import { docToData, serverTimestamps, stripUndefined, toTimestamp } from '../lib/firestore';
 import { createActivity } from './activities.service';
 import { listAdminUsers } from './auth.service';
 import { notifyTenantUser, notifyUser } from './notifications.service';
@@ -185,10 +185,13 @@ export async function updateMaintenanceRequest(
   },
 ): Promise<void> {
   const { id: _id, createdAt, ...rest } = data;
-  await updateDoc(doc(db, COLLECTIONS.maintenanceRequests, id), {
-    ...rest,
-    updatedAt: toTimestamp(),
-  });
+  await updateDoc(
+    doc(db, COLLECTIONS.maintenanceRequests, id),
+    stripUndefined({
+      ...rest,
+      updatedAt: toTimestamp(),
+    }),
+  );
 
   if (data.status && !options?.skipAutoUpdate) {
     await addMaintenanceUpdate(id, {
@@ -541,7 +544,7 @@ export async function updateTechnician(
     >
   >,
 ): Promise<void> {
-  await updateDoc(doc(db, COLLECTIONS.technicians, id), data);
+  await updateDoc(doc(db, COLLECTIONS.technicians, id), stripUndefined(data));
 }
 
 export async function getMaintenanceStats(): Promise<{
