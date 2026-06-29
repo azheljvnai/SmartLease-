@@ -31,10 +31,21 @@ VITE_FIREBASE_APP_ID=...
 - Start in **production mode**
 - Choose a region close to your users
 
-### Firebase Storage (not required)
-This app targets the **Spark (free) plan** and does **not** use Firebase Storage. Profile and maintenance photos are optional small images stored as data URLs in Firestore (max 500KB). You do **not** need to enable Storage in the console.
+### Firebase Storage (optional)
+Lease and invoice PDFs are stored **inline in Firestore** by default (up to ~900KB per file). This works on the **Spark (free) plan**.
 
-Keep `VITE_FIREBASE_STORAGE_BUCKET` in `.env` (it is part of the standard web app config from Firebase).
+To use Firebase Storage instead (recommended for production, requires **Blaze** plan):
+
+1. Firebase Console → **Storage** → **Get started**
+2. Deploy storage rules: `firebase deploy --only storage`
+3. In `.env`:
+
+```env
+VITE_FIREBASE_STORAGE_BUCKET=your_project.appspot.com
+VITE_USE_FIREBASE_STORAGE=true
+```
+
+The `storageBucket` value appears in your web app config, but uploads stay disabled until you set `VITE_USE_FIREBASE_STORAGE=true` and provision Storage in the console.
 
 ## 4. Deploy security rules
 
@@ -81,6 +92,7 @@ The seed script sets `role` custom claims (`admin` | `tenant`) for faster rule e
 | Issue | Fix |
 |-------|-----|
 | `permission-denied` | Deploy rules; ensure user profile exists in `users/{uid}` |
+| Storage CORS / upload failed | Storage is not provisioned on Spark. Leave `VITE_USE_FIREBASE_STORAGE` unset (or `false`) so PDFs store inline in Firestore |
 | Missing index error | Deploy `firestore.indexes.json` or create index from console link |
 | Auth `invalid-credential` | Run seed or verify email/password |
 | Env vars not loading | Restart `npm run dev` after editing `.env` |

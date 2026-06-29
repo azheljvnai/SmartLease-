@@ -7,12 +7,10 @@ import { Input } from '../ui/input';
 import { Card } from '../ui/card';
 import { signUp } from '../../../services/auth.service';
 import { getFirebaseErrorMessage } from '../../../lib/firebase-errors';
-import type { UserRole } from '../../../types';
 
 export const Register = () => {
   const navigate = useNavigate();
   const [showPassword, setShowPassword] = useState(false);
-  const [userType, setUserType] = useState<UserRole>('tenant');
   const [loading, setLoading] = useState(false);
   const [form, setForm] = useState({
     firstName: '',
@@ -26,10 +24,7 @@ export const Register = () => {
     e.preventDefault();
     setLoading(true);
     try {
-      await signUp({
-        ...form,
-        role: userType,
-      });
+      await signUp({ ...form, role: 'tenant' });
       toast.success('Account created! Please sign in.');
       navigate('/login');
     } catch (err) {
@@ -51,33 +46,10 @@ export const Register = () => {
               <Building2 className="w-8 h-8 text-primary-foreground" />
             </div>
           </div>
-          <h2 className="text-2xl font-semibold text-foreground mb-2">Create Account</h2>
-          <p className="text-muted-foreground">Join SmartLease today</p>
-        </div>
-
-        <div className="flex gap-2 mb-6">
-          <button
-            type="button"
-            onClick={() => setUserType('admin')}
-            className={`flex-1 py-2.5 rounded-lg text-sm font-medium transition-all ${
-              userType === 'admin'
-                ? 'bg-primary text-primary-foreground shadow-sm'
-                : 'bg-muted text-muted-foreground hover:bg-muted/80'
-            }`}
-          >
-            Admin
-          </button>
-          <button
-            type="button"
-            onClick={() => setUserType('tenant')}
-            className={`flex-1 py-2.5 rounded-lg text-sm font-medium transition-all ${
-              userType === 'tenant'
-                ? 'bg-primary text-primary-foreground shadow-sm'
-                : 'bg-muted text-muted-foreground hover:bg-muted/80'
-            }`}
-          >
-            Tenant
-          </button>
+          <h2 className="text-2xl font-semibold text-foreground mb-2">Tenant Registration</h2>
+          <p className="text-muted-foreground text-sm">
+            Use the same email your property manager added to your tenant record to link your account automatically.
+          </p>
         </div>
 
         <form onSubmit={handleRegister} className="space-y-4">
@@ -112,7 +84,7 @@ export const Register = () => {
           <Input
             type="tel"
             label="Phone Number"
-            placeholder="+1 (555) 000-0000"
+            placeholder="09XX XXX XXXX"
             value={form.phone}
             onChange={(e) => update('phone', e.target.value)}
           />

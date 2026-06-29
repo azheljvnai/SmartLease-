@@ -1,13 +1,17 @@
 import { useEffect, useState } from 'react';
 import { Card } from '../ui/card';
 import { Button } from '../ui/button';
+import {
+  LEASE_DOCUMENT_STATUS_LABELS,
+  leaseDocumentStatusVariant,
+} from '../../../lib/lease-documents';
 import { Badge } from '../ui/badge';
 import { Link, useNavigate } from 'react-router';
 import { DollarSign, FileText, Wrench, Calendar, Home, CreditCard, AlertCircle, ArrowRight } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import { PageLoader } from '../common/LoadingSpinner';
 import { getActiveLeaseByTenant } from '../../../services/leases.service';
-import { listInvoicesByTenant } from '../../../services/invoices.service';
+import { listInvoicesByTenant, syncOverdueInvoices } from '../../../services/invoices.service';
 import { subscribeMaintenanceByTenant } from '../../../services/maintenance.service';
 import { listNoticesForProperty } from '../../../services/notices.service';
 import type { Invoice, Lease, MaintenanceRequest, Notice } from '../../../types';
@@ -28,10 +32,11 @@ export const TenantHome = () => {
       return;
     }
     Promise.all([
+      syncOverdueInvoices(),
       getActiveLeaseByTenant(tenant.id),
       listInvoicesByTenant(tenant.id),
       listNoticesForProperty(tenant.propertyId),
-    ]).then(([l, invoices, notices]) => {
+    ]).then(([, l, invoices, notices]) => {
       setLease(l);
       const pending = invoices.find((i) => i.status === 'pending' || i.status === 'overdue');
       setNextInvoice(pending ?? invoices[0] ?? null);
@@ -86,7 +91,7 @@ export const TenantHome = () => {
       </Card>
 
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-        <Link to="/tenant/payments">
+        <Link to="/tenant/lease">
           <Card padding={false} className="p-4 hover:shadow-lg transition-all cursor-pointer">
             <FileText className="w-6 h-6 text-primary mb-2" />
             <p className="font-semibold text-sm">View Lease</p>
@@ -100,7 +105,7 @@ export const TenantHome = () => {
         </Link>
       </div>
 
-      <Card>
+      <Card id="lease">
         <div className="flex items-start gap-3 mb-4">
           <Home className="w-6 h-6 text-primary" />
           <div>
@@ -112,7 +117,11 @@ export const TenantHome = () => {
           <div className="grid grid-cols-2 gap-4 text-sm">
             <div><p className="text-muted-foreground">Lease Period</p><p>{formatDate(lease.startDate)} – {formatDate(lease.endDate)}</p></div>
             <div><p className="text-muted-foreground">Monthly Rent</p><p className="font-semibold">{formatCurrency(lease.rent)}</p></div>
-            <div><Badge variant="success">Active</Badge></div>
+            <div>
+              <Badge variant={leaseDocumentStatusVariant(lease.documentStatus ?? 'draft')}>
+                {LEASE_DOCUMENT_STATUS_LABELS[lease.documentStatus ?? 'draft']}
+              </Badge>
+            </div>
           </div>
         )}
       </Card>

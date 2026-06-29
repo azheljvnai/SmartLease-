@@ -1,6 +1,7 @@
 import { Outlet, Link, useLocation, useNavigate } from 'react-router';
 import { useState } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
+import { NotificationBell } from '../common/NotificationBell';
 import {
   LayoutDashboard,
   Building2,
@@ -9,7 +10,7 @@ import {
   CreditCard,
   Wrench,
   BarChart3,
-  Bell,
+  Megaphone,
   Menu,
   X,
   LogOut,
@@ -34,6 +35,7 @@ export const AdminLayout = () => {
     { name: 'Billing', href: '/admin/billing', icon: CreditCard },
     { name: 'Maintenance', href: '/admin/maintenance', icon: Wrench },
     { name: 'Reports', href: '/admin/reports', icon: BarChart3 },
+    { name: 'Notices', href: '/admin/notices', icon: Megaphone },
   ];
 
   const isActive = (href: string) => {
@@ -147,10 +149,7 @@ export const AdminLayout = () => {
         <header className="hidden lg:flex h-14 bg-card border-b border-border items-center justify-between px-6">
           <div className="flex-1" />
           <div className="flex items-center gap-4">
-            <button className="relative p-2 hover:bg-accent rounded-lg transition-colors">
-              <Bell className="w-5 h-5 text-muted-foreground" />
-              <span className="absolute top-1 right-1 w-2 h-2 bg-destructive rounded-full" />
-            </button>
+            <NotificationBell />
           </div>
         </header>
 

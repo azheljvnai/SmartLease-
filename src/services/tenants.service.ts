@@ -15,6 +15,7 @@ import { db } from '../firebase/app';
 import { COLLECTIONS } from '../firebase/config';
 import type { PaymentStatus, Tenant, TenantStatus } from '../types';
 import { docToData, serverTimestamps, toTimestamp } from '../lib/firestore';
+import { assignUnit, releaseUnit } from './units.service';
 
 const col = collection(db, COLLECTIONS.tenants);
 
@@ -41,6 +42,12 @@ export async function getTenantByUserId(userId: string): Promise<Tenant | null> 
   return docToData<Tenant>(snap.docs[0]);
 }
 
+export async function getTenantByEmail(email: string): Promise<Tenant | null> {
+  const snap = await getDocs(query(col, where('email', '==', email.toLowerCase())));
+  if (snap.empty) return null;
+  return docToData<Tenant>(snap.docs[0]);
+}
+
 export async function createTenant(data: {
   name: string;
   email: string;
@@ -56,11 +63,20 @@ export async function createTenant(data: {
 }): Promise<string> {
   const ref = await addDoc(col, {
     ...data,
+    email: data.email.toLowerCase(),
     status: data.status ?? 'active',
     paymentStatus: data.paymentStatus ?? 'pending',
     ...serverTimestamps(),
   });
+  await assignUnit(data.unitId, data.propertyId, ref.id);
   return ref.id;
+}
+
+export async function linkTenantToUser(tenantId: string, userId: string): Promise<void> {
+  await updateDoc(doc(db, COLLECTIONS.tenants, tenantId), {
+    userId,
+    updatedAt: toTimestamp(),
+  });
 }
 
 export async function updateTenant(id: string, data: Partial<Tenant>): Promise<void> {
@@ -72,6 +88,10 @@ export async function updateTenant(id: string, data: Partial<Tenant>): Promise<v
 }
 
 export async function deleteTenant(id: string): Promise<void> {
+  const tenant = await getTenant(id);
+  if (tenant?.unitId) {
+    await releaseUnit(tenant.unitId, tenant.propertyId);
+  }
   await deleteDoc(doc(db, COLLECTIONS.tenants, id));
 }
 

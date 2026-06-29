@@ -14,7 +14,14 @@ import {
   updateMaintenanceRequest,
 } from '../../../services/maintenance.service';
 import { fileToDataUrl } from '../../../lib/file-upload';
-import type { MaintenanceRequest, MaintenanceUpdate } from '../../../types';
+import type { MaintenancePriority, MaintenanceRequest, MaintenanceUpdate } from '../../../types';
+import {
+  maintenanceStatusLabel,
+  maintenancePriorityLabel,
+  maintenancePriorityVariant,
+  maintenanceStatusVariant,
+  normalizeMaintenanceStatus,
+} from '../../../lib/maintenance-labels';
 
 export const TenantMaintenance = () => {
   const { tenant } = useAuth();
@@ -28,7 +35,7 @@ export const TenantMaintenance = () => {
     issue: '',
     category: 'General',
     description: '',
-    priority: 'medium' as const,
+    priority: 'medium' as MaintenancePriority,
   });
 
   useEffect(() => {
@@ -51,13 +58,12 @@ export const TenantMaintenance = () => {
   }, [tenant]);
 
   const getStatusBadge = (status: string) => {
-    switch (status) {
-      case 'submitted': return <Badge variant="info">Submitted</Badge>;
-      case 'assigned': return <Badge variant="warning">Assigned</Badge>;
-      case 'in_progress': return <Badge variant="warning">In Progress</Badge>;
-      case 'completed': return <Badge variant="success">Completed</Badge>;
-      default: return <Badge>{status}</Badge>;
-    }
+    const normalized = normalizeMaintenanceStatus(status as never);
+    return (
+      <Badge variant={maintenanceStatusVariant(normalized)}>
+        {maintenanceStatusLabel(status as never)}
+      </Badge>
+    );
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -75,9 +81,10 @@ export const TenantMaintenance = () => {
         description: newRequest.description,
         category: newRequest.category,
         priority: newRequest.priority,
-        status: 'submitted',
+        status: 'requested',
         submitted: new Date().toISOString().split('T')[0],
         assignedTo: null,
+        propertyName: tenant.propertyName,
       });
 
       if (photoFile) {
@@ -112,10 +119,19 @@ export const TenantMaintenance = () => {
       {requests.map((req) => (
         <Card key={req.id}>
           <div className="flex justify-between mb-2">
-            <h3 className="font-semibold">{req.issue}</h3>
+            <div>
+              <h3 className="font-semibold">{req.issue}</h3>
+              <div className="flex gap-2 mt-1">
+                <Badge variant={maintenancePriorityVariant(req.priority)}>{maintenancePriorityLabel(req.priority)}</Badge>
+              </div>
+            </div>
             {getStatusBadge(req.status)}
           </div>
           <p className="text-sm text-muted-foreground">{req.category} · {req.submitted}</p>
+          {req.assignedTo && (
+            <p className="text-sm text-primary mt-1">Assigned to: {req.assignedTo}</p>
+          )}
+          {req.description && <p className="text-sm mt-2 text-muted-foreground">{req.description}</p>}
           {updatesMap[req.id]?.map((u) => (
             <div key={u.id} className="mt-3 pl-4 border-l-2 border-primary/30 text-sm">
               <p className="text-muted-foreground">{u.date}</p>
@@ -138,6 +154,19 @@ export const TenantMaintenance = () => {
                 <label className="text-sm font-medium">Category</label>
                 <select className="w-full mt-1 h-9 border rounded-md px-3" value={newRequest.category} onChange={(e) => setNewRequest({ ...newRequest, category: e.target.value })}>
                   <option>Plumbing</option><option>HVAC</option><option>Electrical</option><option>General</option>
+                </select>
+              </div>
+              <div>
+                <label className="text-sm font-medium">Priority</label>
+                <select
+                  className="w-full mt-1 h-9 border rounded-md px-3"
+                  value={newRequest.priority}
+                  onChange={(e) => setNewRequest({ ...newRequest, priority: e.target.value as MaintenancePriority })}
+                >
+                  <option value="low">Low</option>
+                  <option value="medium">Medium</option>
+                  <option value="high">High</option>
+                  <option value="emergency">Emergency</option>
                 </select>
               </div>
               <textarea

@@ -25,6 +25,37 @@ export async function listAllUnits(): Promise<Unit[]> {
   return snap.docs.map((d) => docToData<Unit>(d));
 }
 
+export async function ensurePropertyUnits(
+  propertyId: string,
+  expectedCount: number,
+): Promise<void> {
+  const target = Math.max(1, expectedCount);
+  const existing = await listUnitsByProperty(propertyId);
+  if (existing.length >= target) return;
+
+  const usedNumbers = new Set(existing.map((u) => u.unitNumber));
+  let nextNum = 1;
+  let created = 0;
+  const toCreate = target - existing.length;
+
+  while (created < toCreate) {
+    while (usedNumbers.has(String(nextNum))) nextNum++;
+    await createUnit({ propertyId, unitNumber: String(nextNum) });
+    usedNumbers.add(String(nextNum));
+    nextNum++;
+    created++;
+  }
+}
+
+export async function listVacantUnitsByProperty(
+  propertyId: string,
+  expectedCount: number,
+): Promise<Unit[]> {
+  await ensurePropertyUnits(propertyId, expectedCount);
+  const all = await listUnitsByProperty(propertyId);
+  return all.filter((u) => u.status === 'vacant');
+}
+
 export async function createUnit(data: {
   propertyId: string;
   unitNumber: string;

@@ -1,5 +1,6 @@
 import { Outlet, Link, useLocation, useNavigate } from 'react-router';
-import { Home, CreditCard, Wrench, User, Bell, LogOut } from 'lucide-react';
+import { Home, CreditCard, Wrench, User, LogOut, FileText } from 'lucide-react';
+import { NotificationBell } from '../common/NotificationBell';
 import { useAuth } from '../../contexts/AuthContext';
 
 export const TenantLayout = () => {
@@ -14,6 +15,7 @@ export const TenantLayout = () => {
 
   const navigation = [
     { name: 'Home', href: '/tenant', icon: Home },
+    { name: 'Lease', href: '/tenant/lease', icon: FileText },
     { name: 'Payments', href: '/tenant/payments', icon: CreditCard },
     { name: 'Maintenance', href: '/tenant/maintenance', icon: Wrench },
     { name: 'Profile', href: '/tenant/profile', icon: User },
@@ -98,10 +100,7 @@ export const TenantLayout = () => {
         <header className="hidden lg:flex h-14 bg-card border-b border-border items-center justify-between px-6">
           <div className="flex-1" />
           <div className="flex items-center gap-4">
-            <button className="relative p-2 hover:bg-accent rounded-lg transition-colors">
-              <Bell className="w-5 h-5 text-muted-foreground" />
-              <span className="absolute top-1 right-1 w-2 h-2 bg-destructive rounded-full" />
-            </button>
+            <NotificationBell />
           </div>
         </header>
 
@@ -128,7 +127,7 @@ export const TenantLayout = () => {
 
       {/* Bottom navigation for mobile */}
       <nav className="fixed bottom-0 left-0 right-0 bg-card border-t border-border lg:hidden">
-        <div className="grid grid-cols-4">
+        <div className="grid grid-cols-5">
           {navigation.map((item) => {
             const Icon = item.icon;
             const active = isActive(item.href);

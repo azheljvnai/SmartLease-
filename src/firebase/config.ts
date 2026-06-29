@@ -26,6 +26,14 @@ export function getFirebaseConfig() {
   };
 }
 
+/** Requires explicit opt-in — the bucket env var alone does not mean Storage is provisioned. */
+export function isFirebaseStorageEnabled(): boolean {
+  return (
+    import.meta.env.VITE_USE_FIREBASE_STORAGE === 'true' &&
+    Boolean(import.meta.env.VITE_FIREBASE_STORAGE_BUCKET)
+  );
+}
+
 export const COLLECTIONS = {
   users: 'users',
   properties: 'properties',
@@ -39,4 +47,5 @@ export const COLLECTIONS = {
   notices: 'notices',
   technicians: 'technicians',
   paymentMethods: 'paymentMethods',
+  notifications: 'notifications',
 } as const;

@@ -2,6 +2,7 @@ import {
   addDoc,
   collection,
   doc,
+  getDoc,
   getDocs,
   onSnapshot,
   orderBy,
@@ -11,11 +12,35 @@ import {
 } from 'firebase/firestore';
 import { db } from '../firebase/app';
 import { COLLECTIONS } from '../firebase/config';
-import type { MaintenanceRequest, MaintenanceStatus, MaintenanceUpdate } from '../types';
+import type {
+  MaintenanceAttachment,
+  MaintenanceCostBreakdown,
+  MaintenancePriority,
+  MaintenanceRequest,
+  MaintenanceStatus,
+  MaintenanceUpdate,
+  MaintenanceUpdateType,
+  Technician,
+} from '../types';
 import { docToData, serverTimestamps, toTimestamp } from '../lib/firestore';
 import { createActivity } from './activities.service';
+import { listAdminUsers } from './auth.service';
+import { notifyTenantUser, notifyUser } from './notifications.service';
+import {
+  isOpenMaintenanceStatus,
+  maintenanceStatusLabel,
+  normalizeMaintenanceStatus,
+} from '../lib/maintenance-labels';
+import { computeTotalCost } from '../lib/maintenance-utils';
 
 const col = collection(db, COLLECTIONS.maintenanceRequests);
+const techCol = collection(db, COLLECTIONS.technicians);
+
+function generateRequestNumber(): string {
+  const year = new Date().getFullYear();
+  const seq = Date.now().toString(36).toUpperCase().slice(-5);
+  return `WO-${year}-${seq}`;
+}
 
 export async function listMaintenanceRequests(): Promise<MaintenanceRequest[]> {
   const snap = await getDocs(query(col, orderBy('submitted', 'desc')));
@@ -30,11 +55,23 @@ export function subscribeMaintenanceRequests(
   });
 }
 
-export async function listMaintenanceByTenant(
-  tenantId: string,
-): Promise<MaintenanceRequest[]> {
+export async function listMaintenanceByTenant(tenantId: string): Promise<MaintenanceRequest[]> {
   const snap = await getDocs(
     query(col, where('tenantId', '==', tenantId), orderBy('submitted', 'desc')),
+  );
+  return snap.docs.map((d) => docToData<MaintenanceRequest>(d));
+}
+
+export async function listMaintenanceByProperty(propertyId: string): Promise<MaintenanceRequest[]> {
+  const snap = await getDocs(
+    query(col, where('propertyId', '==', propertyId), orderBy('submitted', 'desc')),
+  );
+  return snap.docs.map((d) => docToData<MaintenanceRequest>(d));
+}
+
+export async function listMaintenanceByUnit(unitId: string): Promise<MaintenanceRequest[]> {
+  const snap = await getDocs(
+    query(col, where('unitId', '==', unitId), orderBy('submitted', 'desc')),
   );
   return snap.docs.map((d) => docToData<MaintenanceRequest>(d));
 }
@@ -49,20 +86,64 @@ export function subscribeMaintenanceByTenant(
   );
 }
 
+async function addMaintenanceUpdate(
+  requestId: string,
+  update: {
+    message: string;
+    status: string;
+    type?: MaintenanceUpdateType;
+    author?: string;
+    authorRole?: MaintenanceUpdate['authorRole'];
+  },
+): Promise<void> {
+  const updatesCol = collection(db, COLLECTIONS.maintenanceRequests, requestId, 'updates');
+  await addDoc(updatesCol, {
+    date: new Date().toISOString(),
+    message: update.message,
+    status: update.status,
+    type: update.type ?? 'note',
+    author: update.author,
+    authorRole: update.authorRole ?? 'system',
+    createdAt: toTimestamp(),
+  });
+}
+
+async function getRequestOrThrow(requestId: string) {
+  const snap = await getDoc(doc(db, COLLECTIONS.maintenanceRequests, requestId));
+  if (!snap.exists()) throw new Error('Request not found');
+  return snap.data();
+}
+
+async function notifyRequestTenant(
+  requestId: string,
+  data: { title: string; body: string; subject?: string },
+): Promise<void> {
+  const request = await getRequestOrThrow(requestId);
+  if (request?.tenantId) {
+    await notifyTenantUser(request.tenantId as string, { ...data, type: 'maintenance' });
+  }
+}
+
 export async function createMaintenanceRequest(
-  data: Omit<MaintenanceRequest, 'id' | 'createdAt' | 'updatedAt'>,
+  data: Omit<MaintenanceRequest, 'id' | 'createdAt' | 'updatedAt' | 'requestNumber'>,
 ): Promise<string> {
+  const status =
+    data.status === 'submitted' || data.status === 'pending' ? 'requested' : data.status;
+
   const ref = await addDoc(col, {
     ...data,
+    status,
+    requestNumber: generateRequestNumber(),
+    paymentStatus: data.paymentStatus ?? 'unpaid',
     ...serverTimestamps(),
   });
 
-  const updatesCol = collection(db, COLLECTIONS.maintenanceRequests, ref.id, 'updates');
-  await addDoc(updatesCol, {
-    date: data.submitted,
+  await addMaintenanceUpdate(ref.id, {
     message: 'Request submitted',
-    status: 'submitted',
-    createdAt: toTimestamp(),
+    status,
+    type: 'submission',
+    author: data.tenantName,
+    authorRole: 'tenant',
   });
 
   await createActivity({
@@ -73,12 +154,35 @@ export async function createMaintenanceRequest(
     status: 'pending',
   });
 
+  try {
+    const admins = await listAdminUsers();
+    await Promise.all(
+      admins.map((admin) =>
+        notifyUser(admin.id, {
+          title: 'New maintenance request',
+          body: `${data.tenantName} submitted "${data.issue}" at ${data.unitLabel}.`,
+          type: 'maintenance',
+          subject: 'New maintenance request',
+        }),
+      ),
+    );
+  } catch {
+    // non-blocking
+  }
+
   return ref.id;
 }
 
 export async function updateMaintenanceRequest(
   id: string,
   data: Partial<MaintenanceRequest>,
+  options?: {
+    author?: string;
+    authorRole?: MaintenanceUpdate['authorRole'];
+    skipAutoUpdate?: boolean;
+    updateType?: MaintenanceUpdateType;
+    updateMessage?: string;
+  },
 ): Promise<void> {
   const { id: _id, createdAt, ...rest } = data;
   await updateDoc(doc(db, COLLECTIONS.maintenanceRequests, id), {
@@ -86,20 +190,313 @@ export async function updateMaintenanceRequest(
     updatedAt: toTimestamp(),
   });
 
-  if (data.status) {
-    const updatesCol = collection(db, COLLECTIONS.maintenanceRequests, id, 'updates');
-    await addDoc(updatesCol, {
-      date: new Date().toISOString().split('T')[0],
-      message: `Status updated to ${data.status}`,
+  if (data.status && !options?.skipAutoUpdate) {
+    await addMaintenanceUpdate(id, {
+      message:
+        options?.updateMessage ??
+        `Status changed to ${maintenanceStatusLabel(data.status)}`,
       status: data.status,
-      createdAt: toTimestamp(),
+      type: options?.updateType ?? 'status_change',
+      author: options?.author,
+      authorRole: options?.authorRole ?? 'admin',
+    });
+
+    await notifyRequestTenant(id, {
+      title: 'Maintenance update',
+      body: `Your request status is now ${maintenanceStatusLabel(data.status)}.`,
+      subject: 'Maintenance status update',
     });
   }
 }
 
-export async function listMaintenanceUpdates(
+export async function transitionMaintenanceStatus(
   requestId: string,
-): Promise<MaintenanceUpdate[]> {
+  newStatus: MaintenanceStatus,
+  author: string,
+  note?: string,
+): Promise<void> {
+  const request = await getRequestOrThrow(requestId);
+  const today = new Date().toISOString().split('T')[0];
+  const patch: Partial<MaintenanceRequest> = { status: newStatus };
+
+  if (newStatus === 'completed') patch.completedDate = today;
+  if (newStatus === 'closed') patch.closedDate = today;
+
+  await updateMaintenanceRequest(requestId, patch, {
+    author,
+    authorRole: 'admin',
+    updateType: 'status_change',
+    updateMessage: note ?? `Status changed to ${maintenanceStatusLabel(newStatus)}`,
+  });
+
+  if (newStatus === 'completed') {
+    await notifyRequestTenant(requestId, {
+      title: 'Repair completed',
+      body: `Your maintenance request "${request.issue}" has been completed.`,
+      subject: 'Maintenance completed',
+    });
+  }
+}
+
+export async function assignTechnician(
+  requestId: string,
+  technician: Technician,
+  author?: string,
+): Promise<void> {
+  const today = new Date().toISOString().split('T')[0];
+  await updateMaintenanceRequest(
+    requestId,
+    {
+      status: 'assigned',
+      assignedTo: technician.name,
+      technicianId: technician.id,
+      assignedDate: today,
+    },
+    { skipAutoUpdate: true },
+  );
+
+  await addMaintenanceUpdate(requestId, {
+    message: `Assigned to ${technician.name}`,
+    status: 'assigned',
+    type: 'assignment',
+    author: author ?? 'Admin',
+    authorRole: 'admin',
+  });
+
+  const request = await getRequestOrThrow(requestId);
+  if (request?.tenantId) {
+    await notifyTenantUser(request.tenantId as string, {
+      title: 'Technician assigned',
+      body: `${technician.name} has been assigned to your request "${request.issue}".`,
+      type: 'maintenance',
+      subject: 'Technician assigned',
+    });
+  }
+}
+
+export async function reassignTechnician(
+  requestId: string,
+  technician: Technician,
+  author?: string,
+): Promise<void> {
+  await assignTechnician(requestId, technician, author);
+  await addMaintenanceUpdate(requestId, {
+    message: `Reassigned to ${technician.name}`,
+    status: 'assigned',
+    type: 'assignment',
+    author: author ?? 'Admin',
+    authorRole: 'admin',
+  });
+}
+
+export async function scheduleMaintenance(
+  requestId: string,
+  schedule: {
+    scheduledDate: string;
+    scheduledTime?: string;
+    estimatedCompletionDate?: string;
+  },
+  author?: string,
+): Promise<void> {
+  await updateMaintenanceRequest(
+    requestId,
+    {
+      status: 'scheduled',
+      scheduledDate: schedule.scheduledDate,
+      scheduledTime: schedule.scheduledTime ?? null,
+      estimatedCompletionDate: schedule.estimatedCompletionDate ?? null,
+    },
+    { skipAutoUpdate: true },
+  );
+
+  const timeLabel = schedule.scheduledTime ? ` at ${schedule.scheduledTime}` : '';
+  await addMaintenanceUpdate(requestId, {
+    message: `Repair scheduled for ${schedule.scheduledDate}${timeLabel}`,
+    status: 'scheduled',
+    type: 'schedule',
+    author: author ?? 'Admin',
+    authorRole: 'admin',
+  });
+
+  await notifyRequestTenant(requestId, {
+    title: 'Repair scheduled',
+    body: `Your maintenance repair is scheduled for ${schedule.scheduledDate}${timeLabel}.`,
+    subject: 'Maintenance scheduled',
+  });
+}
+
+export async function addMaintenanceNote(
+  requestId: string,
+  message: string,
+  author: string,
+  authorRole: MaintenanceUpdate['authorRole'] = 'admin',
+  type: MaintenanceUpdateType = 'note',
+): Promise<void> {
+  const request = await getRequestOrThrow(requestId);
+  await addMaintenanceUpdate(requestId, {
+    message,
+    status: String(request.status),
+    type,
+    author,
+    authorRole,
+  });
+}
+
+export async function requestAdditionalInfo(
+  requestId: string,
+  message: string,
+  author: string,
+): Promise<void> {
+  await updateMaintenanceRequest(requestId, { status: 'under_review' }, { skipAutoUpdate: true });
+  await addMaintenanceNote(requestId, message, author, 'admin', 'info_request');
+  await notifyRequestTenant(requestId, {
+    title: 'Additional information needed',
+    body: message,
+    subject: 'Maintenance — information needed',
+  });
+}
+
+export async function updateMaintenanceCosts(
+  requestId: string,
+  costs: MaintenanceCostBreakdown,
+  author?: string,
+): Promise<void> {
+  await updateMaintenanceRequest(requestId, costs, { skipAutoUpdate: true });
+
+  const parts: string[] = [];
+  if (costs.estimatedCost != null) parts.push(`Estimated: ₱${costs.estimatedCost}`);
+  if (costs.laborCost != null) parts.push(`Labor: ₱${costs.laborCost}`);
+  if (costs.materialsCost != null) parts.push(`Materials: ₱${costs.materialsCost}`);
+  if (costs.additionalCharges != null) parts.push(`Additional: ₱${costs.additionalCharges}`);
+  if (costs.actualCost != null) parts.push(`Total: ₱${costs.actualCost}`);
+  if (costs.paymentStatus) parts.push(`Payment: ${costs.paymentStatus}`);
+
+  await addMaintenanceUpdate(requestId, {
+    message: `Cost updated — ${parts.join(', ')}`,
+    status: 'cost',
+    type: 'cost',
+    author: author ?? 'Admin',
+    authorRole: 'admin',
+  });
+}
+
+export async function addMaintenanceAttachment(
+  requestId: string,
+  attachment: Omit<MaintenanceAttachment, 'id' | 'uploadedAt'>,
+  author?: string,
+): Promise<void> {
+  const snap = await getDoc(doc(db, COLLECTIONS.maintenanceRequests, requestId));
+  const existing = (snap.data()?.attachments as MaintenanceAttachment[]) ?? [];
+  const newAttachment: MaintenanceAttachment = {
+    ...attachment,
+    id: `att-${Date.now()}`,
+    uploadedAt: new Date().toISOString(),
+    uploadedBy: author,
+  };
+  await updateMaintenanceRequest(requestId, { attachments: [...existing, newAttachment] }, {
+    skipAutoUpdate: true,
+  });
+  await addMaintenanceUpdate(requestId, {
+    message: `Document attached: ${attachment.name}`,
+    status: 'attachment',
+    type: 'photo',
+    author,
+    authorRole: 'admin',
+  });
+}
+
+export async function completeMaintenanceRequest(
+  requestId: string,
+  data: {
+    actualCost?: number;
+    laborCost?: number;
+    materialsCost?: number;
+    additionalCharges?: number;
+    materialsUsed?: string;
+    adminNotes?: string;
+    author?: string;
+  },
+): Promise<void> {
+  const today = new Date().toISOString().split('T')[0];
+  const total =
+    data.actualCost ??
+    (data.laborCost ?? 0) + (data.materialsCost ?? 0) + (data.additionalCharges ?? 0);
+
+  await updateMaintenanceRequest(
+    requestId,
+    {
+      status: 'completed',
+      completedDate: today,
+      actualCost: total || undefined,
+      laborCost: data.laborCost,
+      materialsCost: data.materialsCost,
+      additionalCharges: data.additionalCharges,
+      materialsUsed: data.materialsUsed,
+      adminNotes: data.adminNotes,
+    },
+    { author: data.author, authorRole: 'admin', updateType: 'completion' },
+  );
+
+  if (data.materialsUsed) {
+    await addMaintenanceUpdate(requestId, {
+      message: `Materials used: ${data.materialsUsed}`,
+      status: 'completed',
+      type: 'note',
+      author: data.author ?? 'Admin',
+      authorRole: 'admin',
+    });
+  }
+}
+
+export async function closeMaintenanceRequest(
+  requestId: string,
+  author?: string,
+): Promise<void> {
+  await transitionMaintenanceStatus(requestId, 'closed', author ?? 'Admin', 'Work order closed');
+}
+
+export async function cancelMaintenanceRequest(
+  requestId: string,
+  reason: string,
+  author?: string,
+): Promise<void> {
+  await updateMaintenanceRequest(requestId, { status: 'closed' }, { skipAutoUpdate: true });
+  await addMaintenanceUpdate(requestId, {
+    message: reason || 'Request cancelled',
+    status: 'closed',
+    type: 'status_change',
+    author: author ?? 'Admin',
+    authorRole: 'admin',
+  });
+}
+
+export async function updateMaintenancePriority(
+  requestId: string,
+  priority: MaintenancePriority,
+  author?: string,
+): Promise<void> {
+  await updateMaintenanceRequest(requestId, { priority }, { skipAutoUpdate: true });
+  await addMaintenanceUpdate(requestId, {
+    message: `Priority changed to ${priority}`,
+    status: 'priority_change',
+    type: 'priority_change',
+    author: author ?? 'Admin',
+    authorRole: 'admin',
+  });
+}
+
+export async function startMaintenanceWork(
+  requestId: string,
+  author?: string,
+): Promise<void> {
+  await updateMaintenanceRequest(
+    requestId,
+    { status: 'in_progress' },
+    { author, authorRole: 'technician', updateType: 'status_change' },
+  );
+}
+
+export async function listMaintenanceUpdates(requestId: string): Promise<MaintenanceUpdate[]> {
   const snap = await getDocs(
     query(
       collection(db, COLLECTIONS.maintenanceRequests, requestId, 'updates'),
@@ -109,7 +506,110 @@ export async function listMaintenanceUpdates(
   return snap.docs.map((d) => docToData<MaintenanceUpdate>(d));
 }
 
-export async function listTechnicians(): Promise<{ id: string; name: string; specialties?: string[]; active?: boolean }[]> {
-  const snap = await getDocs(collection(db, COLLECTIONS.technicians));
-  return snap.docs.map((d) => ({ id: d.id, name: String(d.data().name ?? ''), ...d.data() } as { id: string; name: string }));
+export async function listTechnicians(): Promise<Technician[]> {
+  const snap = await getDocs(query(techCol, orderBy('name')));
+  return snap.docs.map((d) => docToData<Technician>(d));
+}
+
+export async function createTechnician(data: {
+  name: string;
+  email?: string;
+  phone?: string;
+  specialties: string[];
+  assignedPropertyIds?: string[];
+  availability?: Technician['availability'];
+}): Promise<string> {
+  const ref = await addDoc(techCol, {
+    name: data.name,
+    email: data.email ?? null,
+    phone: data.phone ?? null,
+    specialties: data.specialties,
+    assignedPropertyIds: data.assignedPropertyIds ?? [],
+    availability: data.availability ?? 'available',
+    completedJobs: 0,
+    active: true,
+  });
+  return ref.id;
+}
+
+export async function updateTechnician(
+  id: string,
+  data: Partial<
+    Pick<
+      Technician,
+      'name' | 'email' | 'phone' | 'specialties' | 'active' | 'assignedPropertyIds' | 'availability'
+    >
+  >,
+): Promise<void> {
+  await updateDoc(doc(db, COLLECTIONS.technicians, id), data);
+}
+
+export async function getMaintenanceStats(): Promise<{
+  pending: number;
+  assigned: number;
+  inProgress: number;
+  completed: number;
+  emergency: number;
+}> {
+  const requests = await listMaintenanceRequests();
+  return {
+    pending: requests.filter((r) => normalizeMaintenanceStatus(r.status) === 'requested').length,
+    assigned: requests.filter((r) => normalizeMaintenanceStatus(r.status) === 'assigned').length,
+    inProgress: requests.filter(
+      (r) =>
+        normalizeMaintenanceStatus(r.status) === 'in_progress' ||
+        normalizeMaintenanceStatus(r.status) === 'waiting_parts',
+    ).length,
+    completed: requests.filter(
+      (r) =>
+        normalizeMaintenanceStatus(r.status) === 'completed' ||
+        normalizeMaintenanceStatus(r.status) === 'closed',
+    ).length,
+    emergency: requests.filter((r) => r.priority === 'emergency' && isOpenMaintenanceStatus(r.status))
+      .length,
+  };
+}
+
+export async function getTechnicianWorkload(): Promise<
+  Array<Technician & { openCount: number; inProgressCount: number; scheduledCount: number }>
+> {
+  const [technicians, requests] = await Promise.all([listTechnicians(), listMaintenanceRequests()]);
+  return technicians.map((tech) => {
+    const assigned = requests.filter((r) => r.technicianId === tech.id);
+    return {
+      ...tech,
+      openCount: assigned.filter((r) => isOpenMaintenanceStatus(r.status)).length,
+      inProgressCount: assigned.filter(
+        (r) =>
+          normalizeMaintenanceStatus(r.status) === 'in_progress' ||
+          normalizeMaintenanceStatus(r.status) === 'waiting_parts',
+      ).length,
+      scheduledCount: assigned.filter(
+        (r) => normalizeMaintenanceStatus(r.status) === 'scheduled',
+      ).length,
+    };
+  });
+}
+
+export async function getScheduledMaintenance(): Promise<MaintenanceRequest[]> {
+  const requests = await listMaintenanceRequests();
+  return requests
+    .filter(
+      (r) =>
+        r.scheduledDate &&
+        isOpenMaintenanceStatus(r.status) &&
+        ['scheduled', 'assigned', 'in_progress'].includes(normalizeMaintenanceStatus(r.status)),
+    )
+    .sort((a, b) => (a.scheduledDate ?? '').localeCompare(b.scheduledDate ?? ''));
+}
+
+export function getResolutionDays(request: MaintenanceRequest): number | null {
+  if (!request.completedDate) return null;
+  const start = new Date(request.submitted).getTime();
+  const end = new Date(request.completedDate).getTime();
+  return Math.max(1, Math.round((end - start) / (1000 * 60 * 60 * 24)));
+}
+
+export function getRequestTotalCost(request: MaintenanceRequest): number {
+  return computeTotalCost(request);
 }

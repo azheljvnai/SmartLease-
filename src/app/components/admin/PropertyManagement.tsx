@@ -12,6 +12,7 @@ import {
   subscribeProperties,
   createProperty,
   deleteProperty,
+  updateProperty,
 } from '../../../services/properties.service';
 import type { Property } from '../../../types';
 import { getFirebaseErrorMessage } from '../../../lib/firebase-errors';
@@ -24,6 +25,7 @@ export const PropertyManagement = () => {
   const [showForm, setShowForm] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [deleteId, setDeleteId] = useState<string | null>(null);
+  const [editId, setEditId] = useState<string | null>(null);
   const [form, setForm] = useState({ name: '', address: '', units: '24' });
 
   useEffect(() => {
@@ -73,6 +75,30 @@ export const PropertyManagement = () => {
     }
   };
 
+  const startEdit = (property: Property) => {
+    setEditId(property.id);
+    setForm({ name: property.name, address: property.address, units: String(property.units) });
+    setShowForm(false);
+  };
+
+  const handleUpdate = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editId) return;
+    setSubmitting(true);
+    try {
+      await updateProperty(editId, {
+        name: form.name,
+        address: form.address,
+      });
+      toast.success('Property updated');
+      setEditId(null);
+    } catch (err) {
+      toast.error(getFirebaseErrorMessage(err));
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
   if (loading) return <PageLoader />;
 
   return (
@@ -87,6 +113,20 @@ export const PropertyManagement = () => {
           Add Property
         </Button>
       </div>
+
+      {editId && (
+        <Card>
+          <form onSubmit={handleUpdate} className="space-y-4">
+            <h3 className="font-semibold text-foreground">Edit Property</h3>
+            <Input label="Name" required value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />
+            <Input label="Address" required value={form.address} onChange={(e) => setForm({ ...form, address: e.target.value })} />
+            <div className="flex gap-2">
+              <Button type="submit" variant="primary" loading={submitting}>Save</Button>
+              <Button type="button" variant="outline" onClick={() => setEditId(null)}>Cancel</Button>
+            </div>
+          </form>
+        </Card>
+      )}
 
       {showForm && (
         <Card>
@@ -168,7 +208,10 @@ export const PropertyManagement = () => {
                           <Badge variant={property.status === 'active' ? 'success' : 'warning'}>{property.status}</Badge>
                         </td>
                         <td className="px-6 py-4">
-                          <Button variant="ghost" size="sm" onClick={() => setDeleteId(property.id)}>Delete</Button>
+                          <div className="flex gap-1">
+                            <Button variant="ghost" size="sm" onClick={() => startEdit(property)}>Edit</Button>
+                            <Button variant="ghost" size="sm" onClick={() => setDeleteId(property.id)}>Delete</Button>
+                          </div>
                         </td>
                       </tr>
                     );

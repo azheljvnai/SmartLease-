@@ -88,14 +88,54 @@ export const SEED_PROPERTIES = [
   },
 ];
 
-export const SEED_UNITS = [
-  { id: 'unit-sunset-101', propertyId: 'prop-sunset', unitNumber: '101', status: 'occupied', tenantKey: 'john' },
-  { id: 'unit-sunset-204', propertyId: 'prop-sunset', unitNumber: '204', status: 'occupied', tenantKey: 'david' },
-  { id: 'unit-downtown-205', propertyId: 'prop-downtown', unitNumber: '205', status: 'occupied', tenantKey: 'sarah' },
-  { id: 'unit-riverside-312', propertyId: 'prop-riverside', unitNumber: '312', status: 'occupied', tenantKey: 'michael' },
-  { id: 'unit-garden-108', propertyId: 'prop-garden', unitNumber: '108', status: 'occupied', tenantKey: 'emily' },
-  { id: 'unit-downtown-403', propertyId: 'prop-downtown', unitNumber: '403', status: 'occupied', tenantKey: 'robert' },
+const OCCUPIED_UNIT_SPECS = [
+  { id: 'unit-sunset-101', propertyId: 'prop-sunset', unitNumber: '1', tenantKey: 'john' },
+  { id: 'unit-sunset-204', propertyId: 'prop-sunset', unitNumber: '2', tenantKey: 'david' },
+  { id: 'unit-downtown-205', propertyId: 'prop-downtown', unitNumber: '1', tenantKey: 'sarah' },
+  { id: 'unit-downtown-403', propertyId: 'prop-downtown', unitNumber: '2', tenantKey: 'robert' },
+  { id: 'unit-riverside-312', propertyId: 'prop-riverside', unitNumber: '1', tenantKey: 'michael' },
+  { id: 'unit-garden-108', propertyId: 'prop-garden', unitNumber: '1', tenantKey: 'emily' },
 ];
+
+function buildSeedUnits() {
+  const units: Array<{
+    id: string;
+    propertyId: string;
+    unitNumber: string;
+    status: 'vacant' | 'occupied';
+    tenantKey?: string;
+  }> = [];
+
+  for (const prop of SEED_PROPERTIES) {
+    const occupiedForProp = OCCUPIED_UNIT_SPECS.filter((o) => o.propertyId === prop.id);
+    const occupiedByNumber = new Map(occupiedForProp.map((o) => [o.unitNumber, o]));
+
+    for (let i = 1; i <= prop.units; i++) {
+      const unitNumber = String(i);
+      const spec = occupiedByNumber.get(unitNumber);
+      if (spec) {
+        units.push({
+          id: spec.id,
+          propertyId: prop.id,
+          unitNumber,
+          status: 'occupied',
+          tenantKey: spec.tenantKey,
+        });
+      } else {
+        units.push({
+          id: `unit-${prop.slug}-${unitNumber}`,
+          propertyId: prop.id,
+          unitNumber,
+          status: 'vacant',
+        });
+      }
+    }
+  }
+
+  return units;
+}
+
+export const SEED_UNITS = buildSeedUnits();
 
 export const SEED_TENANTS = [
   {
@@ -107,7 +147,7 @@ export const SEED_TENANTS = [
     propertyId: 'prop-sunset',
     unitId: 'unit-sunset-101',
     propertyName: 'Sunset Apartments',
-    unitLabel: 'Sunset Apartments - Unit 101',
+    unitLabel: 'Sunset Apartments - Unit 1',
     rent: 1200,
     status: 'active',
     paymentStatus: 'paid',
@@ -121,7 +161,7 @@ export const SEED_TENANTS = [
     propertyId: 'prop-downtown',
     unitId: 'unit-downtown-205',
     propertyName: 'Downtown Plaza',
-    unitLabel: 'Downtown Plaza - Unit 205',
+    unitLabel: 'Downtown Plaza - Unit 1',
     rent: 1800,
     status: 'active',
     paymentStatus: 'paid',
@@ -135,7 +175,7 @@ export const SEED_TENANTS = [
     propertyId: 'prop-riverside',
     unitId: 'unit-riverside-312',
     propertyName: 'Riverside Condos',
-    unitLabel: 'Riverside Condos - Unit 312',
+    unitLabel: 'Riverside Condos - Unit 1',
     rent: 1500,
     status: 'active',
     paymentStatus: 'pending',
@@ -149,7 +189,7 @@ export const SEED_TENANTS = [
     propertyId: 'prop-garden',
     unitId: 'unit-garden-108',
     propertyName: 'Garden Heights',
-    unitLabel: 'Garden Heights - Unit 108',
+    unitLabel: 'Garden Heights - Unit 1',
     rent: 950,
     status: 'active',
     paymentStatus: 'overdue',
@@ -163,7 +203,7 @@ export const SEED_TENANTS = [
     propertyId: 'prop-sunset',
     unitId: 'unit-sunset-204',
     propertyName: 'Sunset Apartments',
-    unitLabel: 'Sunset Apartments - Unit 204',
+    unitLabel: 'Sunset Apartments - Unit 2',
     rent: 1350,
     status: 'inactive',
     paymentStatus: 'paid',
@@ -177,7 +217,7 @@ export const SEED_TENANTS = [
     propertyId: 'prop-downtown',
     unitId: 'unit-downtown-403',
     propertyName: 'Downtown Plaza',
-    unitLabel: 'Downtown Plaza - Unit 403',
+    unitLabel: 'Downtown Plaza - Unit 2',
     rent: 1350,
     status: 'active',
     paymentStatus: 'pending',
@@ -185,18 +225,18 @@ export const SEED_TENANTS = [
 ];
 
 export const SEED_INVOICES = [
-  { id: 'inv-001', invoiceNumber: 'INV-001', tenantKey: 'john', unitLabel: 'Unit 101', amount: 1200, dueDate: '2026-05-01', paidDate: '2026-04-28', status: 'paid', method: 'Bank Transfer' },
-  { id: 'inv-002', invoiceNumber: 'INV-002', tenantKey: 'sarah', unitLabel: 'Unit 205', amount: 1800, dueDate: '2026-05-01', paidDate: '2026-05-01', status: 'paid', method: 'Credit Card' },
-  { id: 'inv-003', invoiceNumber: 'INV-003', tenantKey: 'michael', unitLabel: 'Unit 312', amount: 1500, dueDate: '2026-05-01', paidDate: null, status: 'pending', method: null },
-  { id: 'inv-004', invoiceNumber: 'INV-004', tenantKey: 'emily', unitLabel: 'Unit 108', amount: 950, dueDate: '2026-04-25', paidDate: null, status: 'overdue', method: null, lateFee: 50 },
-  { id: 'inv-005', invoiceNumber: 'INV-005', tenantKey: 'robert', unitLabel: 'Unit 403', amount: 1350, dueDate: '2026-05-05', paidDate: null, status: 'pending', method: null },
+  { id: 'inv-001', invoiceNumber: 'INV-001', tenantKey: 'john', unitLabel: 'Unit 1', amount: 1200, dueDate: '2026-05-01', paidDate: '2026-04-28', status: 'paid', method: 'Bank Transfer' },
+  { id: 'inv-002', invoiceNumber: 'INV-002', tenantKey: 'sarah', unitLabel: 'Unit 1', amount: 1800, dueDate: '2026-05-01', paidDate: '2026-05-01', status: 'paid', method: 'Credit Card' },
+  { id: 'inv-003', invoiceNumber: 'INV-003', tenantKey: 'michael', unitLabel: 'Unit 1', amount: 1500, dueDate: '2026-05-01', paidDate: null, status: 'pending', method: null },
+  { id: 'inv-004', invoiceNumber: 'INV-004', tenantKey: 'emily', unitLabel: 'Unit 1', amount: 950, dueDate: '2026-04-25', paidDate: null, status: 'overdue', method: null, lateFee: 50 },
+  { id: 'inv-005', invoiceNumber: 'INV-005', tenantKey: 'robert', unitLabel: 'Unit 2', amount: 1350, dueDate: '2026-05-05', paidDate: null, status: 'pending', method: null },
 ];
 
 export const SEED_MAINTENANCE = [
-  { id: 'mnt-001', tenantKey: 'sarah', unitLabel: 'Unit 205', issue: 'Leaking faucet in kitchen', priority: 'medium', status: 'in_progress', submitted: '2026-05-05', assignedTo: 'Mike Williams', category: 'Plumbing' },
-  { id: 'mnt-002', tenantKey: 'john', unitLabel: 'Unit 101', issue: 'AC not cooling properly', priority: 'high', status: 'submitted', submitted: '2026-05-06', assignedTo: null, category: 'HVAC' },
-  { id: 'mnt-003', tenantKey: 'michael', unitLabel: 'Unit 312', issue: 'Light fixture replacement', priority: 'low', status: 'assigned', submitted: '2026-05-04', assignedTo: 'Tom Anderson', category: 'Electrical' },
-  { id: 'mnt-004', tenantKey: 'emily', unitLabel: 'Unit 108', issue: 'Broken window lock', priority: 'medium', status: 'completed', submitted: '2026-05-01', assignedTo: 'Steve Rogers', category: 'General' },
+  { id: 'mnt-001', tenantKey: 'sarah', unitLabel: 'Unit 1', issue: 'Leaking faucet in kitchen', priority: 'medium', status: 'in_progress', submitted: '2026-05-05', assignedTo: 'Mike Williams', category: 'Plumbing' },
+  { id: 'mnt-002', tenantKey: 'john', unitLabel: 'Unit 1', issue: 'AC not cooling properly', priority: 'high', status: 'submitted', submitted: '2026-05-06', assignedTo: null, category: 'HVAC' },
+  { id: 'mnt-003', tenantKey: 'michael', unitLabel: 'Unit 1', issue: 'Light fixture replacement', priority: 'low', status: 'assigned', submitted: '2026-05-04', assignedTo: 'Tom Anderson', category: 'Electrical' },
+  { id: 'mnt-004', tenantKey: 'emily', unitLabel: 'Unit 1', issue: 'Broken window lock', priority: 'medium', status: 'completed', submitted: '2026-05-01', assignedTo: 'Steve Rogers', category: 'General' },
 ];
 
 export const SEED_TECHNICIANS = [

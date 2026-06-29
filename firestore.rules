@@ -35,7 +35,7 @@ service cloud.firestore {
     match /users/{userId} {
       allow read: if isSignedIn() && (request.auth.uid == userId || isAdmin());
       allow create: if isSignedIn() && request.auth.uid == userId
-        && request.resource.data.role in ['admin', 'tenant'];
+        && request.resource.data.role == 'tenant';
       allow update: if isSignedIn() && (request.auth.uid == userId || isAdmin())
         && !request.resource.data.diff(resource.data).affectedKeys().hasAny(['role', 'tenantId'])
         || isAdmin();
@@ -59,7 +59,26 @@ service cloud.firestore {
 
     match /leases/{id} {
       allow read: if isAdmin() || (isTenant() && resource.data.tenantId == userTenantId());
-      allow write: if isAdmin();
+      allow create, delete: if isAdmin();
+      allow update: if isAdmin()
+        || (isTenant() && resource.data.tenantId == userTenantId()
+          && request.resource.data.tenantId == resource.data.tenantId
+          && request.resource.data.diff(resource.data).affectedKeys()
+            .hasOnly(['documents', 'documentStatus', 'updatedAt']));
+
+      match /documentFiles/{fileId} {
+        allow read: if isAdmin()
+          || (isTenant() && get(/databases/$(database)/documents/leases/$(id)).data.tenantId == userTenantId());
+        allow write: if isAdmin()
+          || (isTenant() && get(/databases/$(database)/documents/leases/$(id)).data.tenantId == userTenantId()
+            && fileId == 'signed');
+      }
+
+      match /history/{entryId} {
+        allow read: if isAdmin()
+          || (isTenant() && get(/databases/$(database)/documents/leases/$(id)).data.tenantId == userTenantId());
+        allow write: if isAdmin();
+      }
     }
 
     match /invoices/{id} {
@@ -115,6 +134,14 @@ service cloud.firestore {
     match /paymentMethods/{id} {
       allow read: if isAdmin() || (isTenant() && resource.data.tenantId == userTenantId());
       allow write: if isAdmin() || (isTenant() && request.resource.data.tenantId == userTenantId());
+    }
+
+    match /notifications/{id} {
+      allow read: if isSignedIn() && resource.data.userId == request.auth.uid;
+      allow create: if isSignedIn();
+      allow update: if isSignedIn() && resource.data.userId == request.auth.uid
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['read']);
+      allow delete: if isAdmin() || (isSignedIn() && resource.data.userId == request.auth.uid);
     }
   }
 }

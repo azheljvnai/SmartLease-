@@ -6,11 +6,12 @@ import {
   updatePassword,
   type User,
 } from 'firebase/auth';
-import { doc, getDoc, setDoc, updateDoc } from 'firebase/firestore';
+import { doc, getDoc, setDoc, updateDoc, collection, getDocs, query, where } from 'firebase/firestore';
 import { auth, db } from '../firebase/app';
 import { COLLECTIONS } from '../firebase/config';
 import type { UserProfile, UserRole } from '../types';
 import { docToData, serverTimestamps, toTimestamp } from '../lib/firestore';
+import { getTenantByEmail, linkTenantToUser } from './tenants.service';
 
 export async function signUp(params: {
   email: string;
@@ -20,18 +21,28 @@ export async function signUp(params: {
   phone?: string;
   role: UserRole;
 }): Promise<UserProfile> {
+  const email = params.email.toLowerCase().trim();
   const credential = await createUserWithEmailAndPassword(
     auth,
-    params.email,
+    email,
     params.password,
   );
 
+  let tenantId: string | undefined;
+  if (params.role === 'tenant') {
+    const existingTenant = await getTenantByEmail(email);
+    if (existingTenant) {
+      tenantId = existingTenant.id;
+    }
+  }
+
   const profile: Omit<UserProfile, 'id'> = {
-    email: params.email,
+    email,
     firstName: params.firstName,
     lastName: params.lastName,
     phone: params.phone,
     role: params.role,
+    ...(tenantId ? { tenantId } : {}),
     notificationEmail: true,
     notificationSms: false,
     twoFactorEnabled: false,
@@ -39,6 +50,10 @@ export async function signUp(params: {
   };
 
   await setDoc(doc(db, COLLECTIONS.users, credential.user.uid), profile);
+
+  if (tenantId) {
+    await linkTenantToUser(tenantId, credential.user.uid);
+  }
 
   return { id: credential.user.uid, ...profile };
 }
@@ -76,4 +91,11 @@ export async function updateUserProfile(
     ...data,
     updatedAt: toTimestamp(),
   });
+}
+
+export async function listAdminUsers(): Promise<UserProfile[]> {
+  const snap = await getDocs(
+    query(collection(db, COLLECTIONS.users), where('role', '==', 'admin')),
+  );
+  return snap.docs.map((d) => docToData<UserProfile>(d as never));
 }

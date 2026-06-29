@@ -5,12 +5,14 @@ export interface PaymentInput {
   method: string;
   tenantName: string;
   monthLabel?: string;
+  paymentMethodType?: 'gcash' | 'paymaya' | 'card';
 }
 
 export interface PaymentResult {
   success: boolean;
   paymentId?: string;
   error?: string;
+  redirectUrl?: string;
 }
 
 export interface PaymentGateway {

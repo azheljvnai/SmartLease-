@@ -1,0 +1,56 @@
+rules_version = '2';
+
+service firebase.storage {
+  match /b/{bucket}/o {
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function userDoc() {
+      return firestore.get(/databases/(default)/documents/users/$(request.auth.uid));
+    }
+
+    function getUserRole() {
+      return request.auth.token.role != null
+        ? request.auth.token.role
+        : userDoc().data.role;
+    }
+
+    function isAdmin() {
+      return isSignedIn() && getUserRole() == 'admin';
+    }
+
+    function isTenant() {
+      return isSignedIn() && getUserRole() == 'tenant';
+    }
+
+    function userTenantId() {
+      return userDoc().data.tenantId;
+    }
+
+    function leaseTenantId(leaseId) {
+      return firestore.get(/databases/(default)/documents/leases/$(leaseId)).data.tenantId;
+    }
+
+    function invoiceTenantId(invoiceId) {
+      return firestore.get(/databases/(default)/documents/invoices/$(invoiceId)).data.tenantId;
+    }
+
+    match /leases/{leaseId}/{docType}/{fileName} {
+      allow read: if isAdmin()
+        || (isTenant() && leaseTenantId(leaseId) == userTenantId());
+      allow write: if isAdmin()
+        || (isTenant() && docType == 'signed' && leaseTenantId(leaseId) == userTenantId()
+          && request.resource.contentType == 'application/pdf'
+          && request.resource.size < 10 * 1024 * 1024);
+    }
+
+    match /invoices/{invoiceId}/{fileName} {
+      allow read: if isAdmin()
+        || (isTenant() && invoiceTenantId(invoiceId) == userTenantId());
+      allow write: if isAdmin()
+        && request.resource.contentType == 'application/pdf'
+        && request.resource.size < 5 * 1024 * 1024;
+    }
+  }
+}

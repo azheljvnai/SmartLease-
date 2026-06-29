@@ -1,117 +1,224 @@
-import { useEffect, useState } from 'react';
-import { toast } from 'sonner';
-import { Card } from '../ui/card';
-import { Button } from '../ui/button';
-import { Input } from '../ui/input';
-import { Badge } from '../ui/badge';
-import { Search, AlertCircle, Clock, CheckCircle2, Wrench } from 'lucide-react';
+import { useEffect, useMemo, useState } from 'react';
+import { BarChart3, Calendar, ClipboardList, FileBarChart, Users, Wrench } from 'lucide-react';
 import { PageLoader } from '../common/LoadingSpinner';
+import { Card } from '../ui/card';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '../ui/tabs';
+import { MaintenanceDashboard } from './maintenance/MaintenanceDashboard';
+import { MaintenanceFilters } from './maintenance/MaintenanceFilters';
+import { MaintenanceRequestCard } from './maintenance/MaintenanceRequestCard';
+import { MaintenanceDetailPanel } from './maintenance/MaintenanceDetailPanel';
+import { TechnicianManagement } from './maintenance/TechnicianManagement';
+import { MaintenanceSchedule } from './maintenance/MaintenanceSchedule';
+import { MaintenanceReports } from './maintenance/MaintenanceReports';
 import {
   subscribeMaintenanceRequests,
-  updateMaintenanceRequest,
   listTechnicians,
+  listMaintenanceUpdates,
+  listMaintenanceByProperty,
+  getScheduledMaintenance,
 } from '../../../services/maintenance.service';
-import type { MaintenanceRequest, MaintenanceStatus } from '../../../types';
+import { getMaintenanceDashboardStats } from '../../../services/maintenance-analytics.service';
+import { listProperties } from '../../../services/properties.service';
+import { listTenants } from '../../../services/tenants.service';
+import { listAllUnits } from '../../../services/units.service';
+import { useAuth } from '../../contexts/AuthContext';
+import type { MaintenanceDashboardStats, MaintenanceRequest, MaintenanceUpdate } from '../../../types';
+import {
+  DEFAULT_MAINTENANCE_FILTERS,
+  filterMaintenanceRequests,
+  type MaintenanceFilterState,
+} from '../../../lib/maintenance-utils';
 
 export const Maintenance = () => {
+  const { profile } = useAuth();
+  const authorName = profile ? `${profile.firstName} ${profile.lastName}`.trim() || 'Admin' : 'Admin';
+
   const [requests, setRequests] = useState<MaintenanceRequest[]>([]);
-  const [technicians, setTechnicians] = useState<{ id: string; name: string }[]>([]);
+  const [technicians, setTechnicians] = useState<Awaited<ReturnType<typeof listTechnicians>>>([]);
+  const [properties, setProperties] = useState<Awaited<ReturnType<typeof listProperties>>>([]);
+  const [tenants, setTenants] = useState<Awaited<ReturnType<typeof listTenants>>>([]);
+  const [units, setUnits] = useState<Awaited<ReturnType<typeof listAllUnits>>>([]);
+  const [dashboardStats, setDashboardStats] = useState<MaintenanceDashboardStats | null>(null);
+  const [scheduled, setScheduled] = useState<MaintenanceRequest[]>([]);
   const [loading, setLoading] = useState(true);
-  const [searchQuery, setSearchQuery] = useState('');
-  const [statusFilter, setStatusFilter] = useState('all');
+  const [filters, setFilters] = useState<MaintenanceFilterState>(DEFAULT_MAINTENANCE_FILTERS);
+  const [showAdvancedFilters, setShowAdvancedFilters] = useState(false);
+  const [showFullDashboard, setShowFullDashboard] = useState(false);
+  const [selected, setSelected] = useState<MaintenanceRequest | null>(null);
+  const [updates, setUpdates] = useState<MaintenanceUpdate[]>([]);
+  const [propertyHistory, setPropertyHistory] = useState<MaintenanceRequest[]>([]);
+
+  const refreshMeta = async () => {
+    const [techs, props, tnts, unts, stats, sched] = await Promise.all([
+      listTechnicians(),
+      listProperties(),
+      listTenants(),
+      listAllUnits(),
+      getMaintenanceDashboardStats(),
+      getScheduledMaintenance(),
+    ]);
+    setTechnicians(techs.filter((t) => t.active !== false));
+    setProperties(props);
+    setTenants(tnts);
+    setUnits(unts);
+    setDashboardStats(stats);
+    setScheduled(sched);
+  };
 
   useEffect(() => {
-    const unsub = subscribeMaintenanceRequests(setRequests);
-    listTechnicians().then(setTechnicians).finally(() => setLoading(false));
+    const unsub = subscribeMaintenanceRequests((reqs) => {
+      setRequests(reqs);
+      setLoading(false);
+    });
+    refreshMeta().finally(() => setLoading(false));
     return unsub;
   }, []);
 
-  const filtered = requests.filter((r) => {
-    const matchSearch =
-      r.tenantName.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      r.issue.toLowerCase().includes(searchQuery.toLowerCase());
-    const matchStatus = statusFilter === 'all' || r.status === statusFilter;
-    return matchSearch && matchStatus;
-  });
+  useEffect(() => {
+    if (!selected) return;
+    listMaintenanceUpdates(selected.id).then(setUpdates);
+    listMaintenanceByProperty(selected.propertyId).then(setPropertyHistory);
+    const updated = requests.find((r) => r.id === selected.id);
+    if (updated) setSelected(updated);
+  }, [selected?.id, requests]);
 
-  const getStatusBadge = (status: string) => {
-    switch (status) {
-      case 'submitted': return <Badge variant="info">Submitted</Badge>;
-      case 'assigned': return <Badge variant="warning">Assigned</Badge>;
-      case 'in_progress': return <Badge variant="warning">In Progress</Badge>;
-      case 'completed': return <Badge variant="success">Completed</Badge>;
-      default: return <Badge>{status}</Badge>;
-    }
+  const filtered = useMemo(
+    () => filterMaintenanceRequests(requests, filters),
+    [requests, filters],
+  );
+
+  const refreshUpdates = () => {
+    if (selected) listMaintenanceUpdates(selected.id).then(setUpdates);
+    refreshMeta();
   };
 
-  const handleAssign = async (id: string, name: string) => {
-    await updateMaintenanceRequest(id, { status: 'assigned', assignedTo: name });
-    toast.success('Technician assigned');
-  };
-
-  const handleStatus = async (id: string, status: MaintenanceStatus) => {
-    await updateMaintenanceRequest(id, { status });
-    toast.success('Status updated');
-  };
-
-  if (loading) return <PageLoader />;
+  if (loading && !dashboardStats) return <PageLoader />;
 
   return (
-    <div className="space-y-4 lg:space-y-6">
-      <div>
-        <h1 className="text-2xl lg:text-3xl font-semibold text-foreground mb-1">Maintenance</h1>
-        <p className="text-sm text-muted-foreground">Manage maintenance requests</p>
-      </div>
-
-      <Card>
-        <div className="flex flex-col sm:flex-row gap-4">
-          <div className="relative flex-1">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-muted-foreground" />
-            <Input placeholder="Search requests..." value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} className="pl-10" />
-          </div>
-          <select className="h-9 rounded-md border px-3" value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}>
-            <option value="all">All</option>
-            <option value="submitted">Submitted</option>
-            <option value="assigned">Assigned</option>
-            <option value="in_progress">In Progress</option>
-            <option value="completed">Completed</option>
-          </select>
+    <div className="space-y-4 h-full">
+      <div className="flex flex-col sm:flex-row justify-between gap-3">
+        <div>
+          <h1 className="text-2xl lg:text-3xl font-semibold text-foreground">Maintenance CMMS</h1>
+          <p className="text-sm text-muted-foreground">
+            Work order management — from request to completion
+          </p>
         </div>
-      </Card>
-
-      <div className="space-y-4">
-        {filtered.map((request) => (
-          <Card key={request.id}>
-            <div className="flex flex-col lg:flex-row lg:items-start justify-between gap-4">
-              <div className="flex gap-4">
-                <div className="w-12 h-12 bg-primary/10 rounded-xl flex items-center justify-center">
-                  <Wrench className="w-6 h-6 text-primary" />
-                </div>
-                <div>
-                  <div className="flex flex-wrap gap-2 mb-1">
-                    {getStatusBadge(request.status)}
-                    <Badge variant={request.priority === 'high' ? 'danger' : 'warning'}>{request.priority}</Badge>
-                  </div>
-                  <h3 className="font-semibold">{request.issue}</h3>
-                  <p className="text-sm text-muted-foreground">{request.tenantName} · {request.unitLabel} · {request.category}</p>
-                  <p className="text-xs text-muted-foreground mt-1">Submitted {request.submitted}</p>
-                </div>
-              </div>
-              <div className="flex flex-wrap gap-2">
-                {technicians.map((t) => (
-                  <Button key={t.id} variant="outline" size="sm" onClick={() => handleAssign(request.id, t.name)}>{t.name}</Button>
-                ))}
-                {request.status !== 'in_progress' && request.status !== 'completed' && (
-                  <Button variant="primary" size="sm" onClick={() => handleStatus(request.id, 'in_progress')}>Start</Button>
-                )}
-                {request.status !== 'completed' && (
-                  <Button variant="primary" size="sm" onClick={() => handleStatus(request.id, 'completed')}>Complete</Button>
-                )}
-              </div>
-            </div>
-          </Card>
-        ))}
       </div>
+
+      <Tabs defaultValue="workorders" className="space-y-4">
+        <TabsList className="flex-wrap h-auto">
+          <TabsTrigger value="workorders" className="gap-1.5">
+            <ClipboardList className="w-4 h-4" />Work Orders
+          </TabsTrigger>
+          <TabsTrigger value="technicians" className="gap-1.5">
+            <Users className="w-4 h-4" />Technicians
+          </TabsTrigger>
+          <TabsTrigger value="schedule" className="gap-1.5">
+            <Calendar className="w-4 h-4" />Schedule
+          </TabsTrigger>
+          <TabsTrigger value="analytics" className="gap-1.5">
+            <BarChart3 className="w-4 h-4" />Analytics
+          </TabsTrigger>
+          <TabsTrigger value="reports" className="gap-1.5">
+            <FileBarChart className="w-4 h-4" />Reports
+          </TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="workorders" className="space-y-4 mt-0">
+          {dashboardStats && <MaintenanceDashboard stats={dashboardStats} compact />}
+
+          <MaintenanceFilters
+            filters={filters}
+            onChange={setFilters}
+            properties={properties}
+            units={units}
+            tenants={tenants}
+            technicians={technicians}
+            resultCount={filtered.length}
+            showAdvanced={showAdvancedFilters}
+            onToggleAdvanced={() => setShowAdvancedFilters((v) => !v)}
+          />
+
+          <div className="grid lg:grid-cols-5 gap-4 min-h-[520px]">
+            <div className="lg:col-span-2 flex flex-col gap-2 max-h-[calc(100vh-14rem)] overflow-y-auto pr-1">
+              {filtered.length === 0 ? (
+                <Card className="p-8 text-center text-muted-foreground">
+                  <Wrench className="w-10 h-10 mx-auto mb-2 opacity-40" />
+                  No work orders match your filters
+                </Card>
+              ) : (
+                filtered.map((request) => (
+                  <MaintenanceRequestCard
+                    key={request.id}
+                    request={request}
+                    selected={selected?.id === request.id}
+                    onSelect={() => setSelected(request)}
+                  />
+                ))
+              )}
+            </div>
+
+            <div className="lg:col-span-3 lg:sticky lg:top-4 lg:self-start">
+              {selected ? (
+                <MaintenanceDetailPanel
+                  request={selected}
+                  updates={updates}
+                  technicians={technicians}
+                  authorName={authorName}
+                  onClose={() => setSelected(null)}
+                  onRefreshUpdates={refreshUpdates}
+                  propertyHistory={propertyHistory}
+                />
+              ) : (
+                <Card className="flex flex-col items-center justify-center py-16 px-6 text-center text-muted-foreground min-h-[400px]">
+                  <Wrench className="w-12 h-12 mb-3 opacity-30" />
+                  <p className="font-medium text-foreground">Select a work order</p>
+                  <p className="text-sm mt-1 max-w-sm">
+                    Choose a request from the list to view details, assign technicians, schedule repairs, and track costs.
+                  </p>
+                </Card>
+              )}
+            </div>
+          </div>
+        </TabsContent>
+
+        <TabsContent value="technicians" className="mt-0">
+          <TechnicianManagement
+            technicians={technicians}
+            properties={properties}
+            requests={requests}
+            onRefresh={refreshMeta}
+          />
+        </TabsContent>
+
+        <TabsContent value="schedule" className="mt-0">
+          <MaintenanceSchedule scheduled={scheduled} />
+        </TabsContent>
+
+        <TabsContent value="analytics" className="mt-0">
+          {dashboardStats ? (
+            <div className="space-y-4">
+              <div className="flex justify-between items-center">
+                <h2 className="text-lg font-semibold">Maintenance Analytics</h2>
+                <button
+                  type="button"
+                  className="text-sm text-primary hover:underline"
+                  onClick={() => setShowFullDashboard((v) => !v)}
+                >
+                  {showFullDashboard ? 'Show compact view' : 'Show all charts'}
+                </button>
+              </div>
+              <MaintenanceDashboard stats={dashboardStats} compact={!showFullDashboard} />
+            </div>
+          ) : (
+            <PageLoader />
+          )}
+        </TabsContent>
+
+        <TabsContent value="reports" className="mt-0">
+          <MaintenanceReports properties={properties} />
+        </TabsContent>
+      </Tabs>
     </div>
   );
 };

@@ -10,6 +10,12 @@ export function formatCurrency(amount: number): string {
   return PHP_FORMATTER.format(amount);
 }
 
+/** PDF-safe currency when using compact Helvetica fonts (no peso glyph). */
+export function formatCurrencyForPdf(amount: number, compactFont: boolean): string {
+  const formatted = amount.toLocaleString('en-PH', { maximumFractionDigits: 0 });
+  return compactFont ? `PHP ${formatted}` : formatCurrency(amount);
+}
+
 /** Compact label for large amounts, e.g. ₱67K */
 export function formatCurrencyCompact(amount: number): string {
   if (amount >= 1_000_000) {

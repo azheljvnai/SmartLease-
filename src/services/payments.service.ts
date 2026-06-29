@@ -13,6 +13,11 @@ import { docToData, serverTimestamps } from '../lib/firestore';
 
 const col = collection(db, COLLECTIONS.payments);
 
+export async function listPayments(): Promise<PaymentRecord[]> {
+  const snap = await getDocs(query(col, orderBy('createdAt', 'desc')));
+  return snap.docs.map((d) => docToData<PaymentRecord>(d));
+}
+
 export async function listPaymentsByTenant(tenantId: string): Promise<PaymentRecord[]> {
   const snap = await getDocs(
     query(col, where('tenantId', '==', tenantId), orderBy('createdAt', 'desc')),

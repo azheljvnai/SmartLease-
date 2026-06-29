@@ -13,10 +13,12 @@ import { LeaseManagement } from "./components/admin/LeaseManagement";
 import { BillingPayments } from "./components/admin/BillingPayments";
 import { Maintenance } from "./components/admin/Maintenance";
 import { Reports } from "./components/admin/Reports";
+import { NoticesAdmin } from "./components/admin/NoticesAdmin";
 import { TenantHome } from "./components/tenant/TenantHome";
 import { TenantPayments } from "./components/tenant/TenantPayments";
 import { TenantMaintenance } from "./components/tenant/TenantMaintenance";
 import { TenantProfile } from "./components/tenant/TenantProfile";
+import { TenantLease } from "./components/tenant/TenantLease";
 
 export const router = createBrowserRouter([
   {
@@ -43,6 +45,7 @@ export const router = createBrowserRouter([
           { path: "billing", Component: BillingPayments },
           { path: "maintenance", Component: Maintenance },
           { path: "reports", Component: Reports },
+          { path: "notices", Component: NoticesAdmin },
         ],
       },
     ],
@@ -55,6 +58,7 @@ export const router = createBrowserRouter([
         Component: TenantLayout,
         children: [
           { index: true, Component: TenantHome },
+          { path: "lease", Component: TenantLease },
           { path: "payments", Component: TenantPayments },
           { path: "maintenance", Component: TenantMaintenance },
           { path: "profile", Component: TenantProfile },

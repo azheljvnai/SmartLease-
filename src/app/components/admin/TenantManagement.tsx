@@ -9,7 +9,7 @@ import { PageLoader } from '../common/LoadingSpinner';
 import { EmptyState } from '../common/EmptyState';
 import { subscribeTenants, createTenant, deleteTenant } from '../../../services/tenants.service';
 import { listProperties } from '../../../services/properties.service';
-import { listAllUnits } from '../../../services/units.service';
+import { listVacantUnitsByProperty } from '../../../services/units.service';
 import type { Property, Tenant, Unit } from '../../../types';
 import { getFirebaseErrorMessage } from '../../../lib/firebase-errors';
 import { formatCurrency } from '../../../lib/format';
@@ -18,7 +18,8 @@ import { ConfirmDialog } from '../common/ConfirmDialog';
 export const TenantManagement = () => {
   const [tenants, setTenants] = useState<Tenant[]>([]);
   const [properties, setProperties] = useState<Property[]>([]);
-  const [units, setUnits] = useState<Unit[]>([]);
+  const [propertyUnits, setPropertyUnits] = useState<Unit[]>([]);
+  const [loadingUnits, setLoadingUnits] = useState(false);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
   const [showForm, setShowForm] = useState(false);
@@ -30,13 +31,30 @@ export const TenantManagement = () => {
 
   useEffect(() => {
     const unsub = subscribeTenants(setTenants);
-    Promise.all([listProperties(), listAllUnits()]).then(([p, u]) => {
+    listProperties().then((p) => {
       setProperties(p);
-      setUnits(u);
       setLoading(false);
     });
     return unsub;
   }, []);
+
+  useEffect(() => {
+    if (!form.propertyId) {
+      setPropertyUnits([]);
+      return;
+    }
+    const property = properties.find((p) => p.id === form.propertyId);
+    if (!property) return;
+
+    setLoadingUnits(true);
+    listVacantUnitsByProperty(property.id, property.units)
+      .then(setPropertyUnits)
+      .catch(() => {
+        setPropertyUnits([]);
+        toast.error('Failed to load units');
+      })
+      .finally(() => setLoadingUnits(false));
+  }, [form.propertyId, properties]);
 
   const filtered = tenants.filter(
     (t) =>
@@ -44,21 +62,10 @@ export const TenantManagement = () => {
       t.email.toLowerCase().includes(searchQuery.toLowerCase()),
   );
 
-  const propertyUnits = units.filter((u) => u.propertyId === form.propertyId);
-
-  const getPaymentBadge = (status: string) => {
-    switch (status) {
-      case 'paid': return <Badge variant="success">Paid</Badge>;
-      case 'pending': return <Badge variant="warning">Pending</Badge>;
-      case 'overdue': return <Badge variant="danger">Overdue</Badge>;
-      default: return <Badge variant="default">{status}</Badge>;
-    }
-  };
-
   const handleCreate = async (e: React.FormEvent) => {
     e.preventDefault();
     const property = properties.find((p) => p.id === form.propertyId);
-    const unit = units.find((u) => u.id === form.unitId);
+    const unit = propertyUnits.find((u) => u.id === form.unitId);
     if (!property || !unit) {
       toast.error('Select property and unit');
       return;
@@ -81,6 +88,15 @@ export const TenantManagement = () => {
       toast.error(getFirebaseErrorMessage(err));
     } finally {
       setSubmitting(false);
+    }
+  };
+
+  const getPaymentBadge = (status: string) => {
+    switch (status) {
+      case 'paid': return <Badge variant="success">Paid</Badge>;
+      case 'pending': return <Badge variant="warning">Pending</Badge>;
+      case 'overdue': return <Badge variant="danger">Overdue</Badge>;
+      default: return <Badge variant="default">{status}</Badge>;
     }
   };
 
@@ -114,10 +130,21 @@ export const TenantManagement = () => {
             </div>
             <div>
               <label className="text-sm font-medium">Unit</label>
-              <select className="w-full mt-1 h-9 rounded-md border px-3" value={form.unitId} onChange={(e) => setForm({ ...form, unitId: e.target.value })} required>
-                <option value="">Select unit</option>
+              <select
+                className="w-full mt-1 h-9 rounded-md border px-3 disabled:opacity-50"
+                value={form.unitId}
+                onChange={(e) => setForm({ ...form, unitId: e.target.value })}
+                disabled={!form.propertyId || loadingUnits}
+                required
+              >
+                <option value="">{loadingUnits ? 'Loading units...' : 'Select unit'}</option>
                 {propertyUnits.map((u) => <option key={u.id} value={u.id}>Unit {u.unitNumber}</option>)}
               </select>
+              {form.propertyId && !loadingUnits && propertyUnits.length === 0 && (
+                <p className="text-xs text-muted-foreground mt-1">
+                  No vacant units for this property. All units are occupied or none exist yet.
+                </p>
+              )}
             </div>
             <div className="sm:col-span-2 flex gap-2">
               <Button type="submit" variant="primary" loading={submitting}>Save</Button>
@@ -159,6 +186,11 @@ export const TenantManagement = () => {
                         <div>
                           <p className="font-medium">{tenant.name}</p>
                           <Badge variant={tenant.status === 'active' ? 'success' : 'default'} className="mt-1">{tenant.status}</Badge>
+                          {tenant.userId ? (
+                            <Badge variant="success" className="mt-1 ml-1">Linked</Badge>
+                          ) : (
+                            <Badge variant="warning" className="mt-1 ml-1">Awaiting signup</Badge>
+                          )}
                         </div>
                       </div>
                     </td>

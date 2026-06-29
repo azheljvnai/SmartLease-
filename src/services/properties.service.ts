@@ -15,6 +15,7 @@ import { db } from '../firebase/app';
 import { COLLECTIONS } from '../firebase/config';
 import type { Property, PropertyStatus } from '../types';
 import { docToData, serverTimestamps, toTimestamp } from '../lib/firestore';
+import { createUnit } from './units.service';
 
 const col = collection(db, COLLECTIONS.properties);
 
@@ -44,13 +45,24 @@ export async function createProperty(data: {
   units: number;
   status?: PropertyStatus;
 }): Promise<string> {
+  const unitCount = Math.max(1, data.units);
   const ref = await addDoc(col, {
-    ...data,
+    name: data.name,
+    address: data.address,
+    slug: data.slug,
+    units: unitCount,
     occupied: 0,
     revenue: 0,
     status: data.status ?? 'active',
     ...serverTimestamps(),
   });
+
+  await Promise.all(
+    Array.from({ length: unitCount }, (_, i) =>
+      createUnit({ propertyId: ref.id, unitNumber: String(i + 1) }),
+    ),
+  );
+
   return ref.id;
 }
 
